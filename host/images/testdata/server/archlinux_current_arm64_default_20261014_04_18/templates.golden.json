@@ -1,0 +1,18 @@
+[
+  {
+    "path": "/etc/hostname",
+    "when": [
+      "create",
+      "copy"
+    ],
+    "template": "{{ container.name }}\n"
+  },
+  {
+    "path": "/etc/hosts",
+    "when": [
+      "create",
+      "copy"
+    ],
+    "template": "127.0.1.1\t{{ container.name }}\n# Static table lookup for hostnames.\n# See hosts(5) for details.\n127.0.0.1        localhost\n::1              localhost\n"
+  }
+]

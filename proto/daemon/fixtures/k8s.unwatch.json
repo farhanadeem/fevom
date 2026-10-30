@@ -1,0 +1,7 @@
+{
+  "method": "k8s.unwatch",
+  "params": {
+    "subscription": 7
+  },
+  "result": {}
+}

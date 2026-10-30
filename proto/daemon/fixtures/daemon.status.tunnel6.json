@@ -1,0 +1,62 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 41,
+    "state": "running",
+    "engine": "ready",
+    "boot_id": "e81a07",
+    "since": "2026-10-16T14:02:11Z",
+    "pending_restart": [],
+    "network": {
+      "subnet": "198.19.0.0/16",
+      "subnet6": "fd5b:6e2a:91c0::/48",
+      "direct_access": "on",
+      "interface": "utun9",
+      "routes": [
+        "198.19.0.0/24",
+        "198.19.2.0/24",
+        "198.19.4.0/22",
+        "198.19.64.0/18",
+        "198.19.128.0/18",
+        "fd5b:6e2a:91c0:1::/64",
+        "fd5b:6e2a:91c0:3::/64",
+        "fd5b:6e2a:91c0:100::/56",
+        "64:ff9b::c613:0/120",
+        "64:ff9b::c613:200/120",
+        "64:ff9b::c613:400/118",
+        "64:ff9b::c613:4000/114",
+        "64:ff9b::c613:8000/114"
+      ],
+      "address6": "fd5b:6e2a:91c0:2::1",
+      "nat64": [
+        "64:ff9b::/96"
+      ],
+      "helper": {
+        "protocol_version": 1,
+        "security_level": 1,
+        "build": "v0.7.0-12-g8a210f3"
+      }
+    },
+    "domains": {
+      "resolver": "fevs",
+      "port": 15353,
+      "names": 3
+    },
+    "https": {
+      "enabled": true,
+      "trust": "trusted",
+      "root": "9f2c4a7e1b3d5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d8e",
+      "key": "signer"
+    },
+    "data": {
+      "budget": {
+        "referenced_bytes": 6442450944,
+        "budget_bytes": 113816633344,
+        "limit_bytes": 120259084288,
+        "limited": true,
+        "at": "2026-10-16T14:02:13Z"
+      }
+    }
+  }
+}

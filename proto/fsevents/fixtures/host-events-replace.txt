@@ -1,0 +1,3 @@
+events records=2
+  rename flags=victim_gone mask=0 parent=12 child=0 parent2=12 victim=57 name=".main.go.swp" name2="main.go"
+  change flags=0 mask=modify|close_write|open parent=12 child=0 parent2=0 victim=0 name="main.go" name2=""

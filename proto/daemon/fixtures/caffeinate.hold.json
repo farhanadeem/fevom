@@ -1,0 +1,11 @@
+{
+  "method": "caffeinate.hold",
+  "params": {
+    "reason": "fev caffeinate: make test",
+    "display": true
+  },
+  "result": {
+    "holders": 1,
+    "display": true
+  }
+}

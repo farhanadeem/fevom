@@ -1,0 +1,12 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "id": 312,
+    "method": "k8s.start",
+    "state": "running",
+    "phase": "fetching",
+    "done_bytes": 84017152,
+    "total_bytes": 250217791
+  }
+}

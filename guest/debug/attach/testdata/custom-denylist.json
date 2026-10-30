@@ -1,0 +1,43 @@
+{
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "architectures": [
+    "SCMP_ARCH_AARCH64"
+  ],
+  "syscalls": [
+    {
+      "names": [
+        "mkdir",
+        "mkdirat"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 95
+    },
+    {
+      "names": [
+        "ptrace"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1
+    },
+    {
+      "names": [
+        "bpf"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1
+    },
+    {
+      "names": [
+        "clone3"
+      ],
+      "action": "SCMP_ACT_KILL_PROCESS"
+    },
+    {
+      "names": [
+        "swapon",
+        "swapoff"
+      ],
+      "action": "SCMP_ACT_KILL_THREAD"
+    }
+  ]
+}

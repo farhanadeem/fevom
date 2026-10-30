@@ -1,0 +1,6 @@
+#!/bin/sh
+: "${FEV_BUILD_DOCKER_HOST:?no build host: tests/lib/buildhost.sh up, or build_host_docker in the script}"
+: "${FEV_BUILD_DOCKER_CLI:?no build host CLI: tests/lib/buildhost.sh env}"
+: "${FEV_BUILD_DOCKER_CONFIG:?no build host configuration: tests/lib/buildhost.sh env}"
+unset DOCKER_CONTEXT DOCKER_HOST
+DOCKER_CONFIG=$FEV_BUILD_DOCKER_CONFIG exec "$FEV_BUILD_DOCKER_CLI" -H "$FEV_BUILD_DOCKER_HOST" "$@"

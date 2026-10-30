@@ -1,0 +1,34 @@
+diff --git a/include/linux/cgroup-defs.h b/include/linux/cgroup-defs.h
+--- a/include/linux/cgroup-defs.h
++++ b/include/linux/cgroup-defs.h
+@@ -527,7 +527,6 @@
+ 
+ 	int nr_threaded_children;	/* # of live threaded child cgroups */
+ 
+-	/* sequence number for cgroup.kill, serialized by css_set_lock. */
+ 	unsigned int kill_seq;
+ 
+ 	struct kernfs_node *kn;		/* cgroup kernfs entry */
+diff --git a/kernel/cgroup/cgroup.c b/kernel/cgroup/cgroup.c
+--- a/kernel/cgroup/cgroup.c
++++ b/kernel/cgroup/cgroup.c
+@@ -6801,10 +6801,7 @@
+ 	spin_lock_irq(&css_set_lock);
+ 	cset = task_css_set(current);
+ 	get_css_set(cset);
+-	if (kargs->cgrp)
+-		kargs->kill_seq = kargs->cgrp->kill_seq;
+-	else
+-		kargs->kill_seq = cset->dfl_cgrp->kill_seq;
++	kargs->kill_seq = cset->dfl_cgrp->kill_seq;
+ 	spin_unlock_irq(&css_set_lock);
+ 
+ 	if (!(kargs->flags & CLONE_INTO_CGROUP)) {
+@@ -6868,6 +6865,7 @@
+ 
+ 	put_css_set(cset);
+ 	kargs->cgrp = dst_cgrp;
++	kargs->kill_seq = dst_cgrp->kill_seq;
+ 	return ret;
+ 
+ err:

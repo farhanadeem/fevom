@@ -1,0 +1,7 @@
+{
+  "method": "engine.subscribe",
+  "params": {},
+  "result": {
+    "subscription": 4
+  }
+}

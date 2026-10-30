@@ -1,0 +1,61 @@
+{
+  "method": "stats.sample",
+  "notification": true,
+  "params": {
+    "subscription": 6,
+    "time_ms": 184223.5,
+    "mem_total_kb": 8140412,
+    "mem_available_kb": 7630220,
+    "cached_kb": 152640,
+    "groups": [
+      {
+        "kind": "system",
+        "name": "guest",
+        "cpu_usec": 9120443,
+        "memory_bytes": 522579968,
+        "memory_file_bytes": 156303360,
+        "disk_read_bytes": 181190656,
+        "disk_write_bytes": 40218624,
+        "net_rx_bytes": 1048576,
+        "net_tx_bytes": 65536,
+        "pids": 61
+      },
+      {
+        "kind": "service",
+        "name": "engine",
+        "cpu_usec": 3312907,
+        "memory_bytes": 148897792,
+        "memory_file_bytes": 61145088,
+        "disk_read_bytes": 96468992,
+        "disk_write_bytes": 1310720,
+        "pids": 38
+      },
+      {
+        "kind": "container",
+        "name": "web",
+        "id": "4f2a9c1e7b3d5a6f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7",
+        "cpu_usec": 48211,
+        "memory_bytes": 9539584,
+        "memory_file_bytes": 4096000,
+        "disk_read_bytes": 5767168,
+        "disk_write_bytes": 0,
+        "net_rx_bytes": 2206,
+        "net_tx_bytes": 1830,
+        "pids": 11
+      },
+      {
+        "kind": "machine",
+        "name": "dev",
+        "id": "6f1c2a9e-4b7d-4e2a-9c3f-1a2b3c4d5e6f",
+        "cpu_usec": 2210334,
+        "memory_bytes": 118489088,
+        "memory_file_bytes": 70254592,
+        "disk_read_bytes": 51380224,
+        "disk_write_bytes": 2621440,
+        "net_rx_bytes": 40960,
+        "net_tx_bytes": 12288,
+        "pids": 23
+      }
+    ]
+  }
+}

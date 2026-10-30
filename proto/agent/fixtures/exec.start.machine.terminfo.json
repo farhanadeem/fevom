@@ -1,0 +1,23 @@
+{
+  "method": "exec.start",
+  "params": {
+    "context": "machine",
+    "argv": [
+      "htop"
+    ],
+    "env": [
+      "TERM=xterm-fevtest"
+    ],
+    "dir": "/Users/ada/src/app",
+    "tty": true,
+    "rows": 50,
+    "cols": 160,
+    "machine": "dev",
+    "shell": true,
+    "terminfo": "GgEgAAIAAwAGAAoAeHRlcm0tZmV2dGVzdHxmZXYgdGVzdCB0ZXJtaW5hbAAAAVAA//8YAP//AAD///////8CAAcAG1tIG1sySgA="
+  },
+  "result": {
+    "id": 13,
+    "token": "1f2e3d4c5b6a49788796a5b4c3d2e1f0"
+  }
+}

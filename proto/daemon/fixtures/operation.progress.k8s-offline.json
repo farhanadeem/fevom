@@ -1,0 +1,17 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "operation": {
+      "id": "op-20261023T210000-1",
+      "method": "k8s.enable",
+      "target": "kubernetes",
+      "state": "failed",
+      "phase": "fetching",
+      "started": "2026-10-23T21:00:00Z",
+      "ended": "2026-10-23T21:00:01Z",
+      "error": "Turning on Kubernetes the first time downloads its images (177 MB) from github.com, which could not be reached: no route to host. Nothing was changed; try again when online, or set kubernetes.images_url."
+    }
+  }
+}

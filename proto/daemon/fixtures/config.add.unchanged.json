@@ -1,0 +1,5 @@
+{
+  "method": "config.add",
+  "params": {"key": "network.proxy_exclude", "values": ["registry.local"]},
+  "result": {"changed": []}
+}

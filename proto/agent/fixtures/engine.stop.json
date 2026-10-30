@@ -1,0 +1,11 @@
+{
+  "method": "engine.stop",
+  "params": {
+    "grace_ms": 10000
+  },
+  "result": {
+    "state": "stopped",
+    "starts": 1,
+    "last_exit": "exit 0"
+  }
+}

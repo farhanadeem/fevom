@@ -1,0 +1,9 @@
+{
+  "method": "config.add",
+  "params": {"key": "network.proxy_exclude", "values": [".corp.example", "10.20.0.0/16"]},
+  "result": {
+    "changed": [
+      {"key": "network.proxy_exclude", "value": ["registry.local", ".corp.example", "10.20.0.0/16"], "apply": "live"}
+    ]
+  }
+}

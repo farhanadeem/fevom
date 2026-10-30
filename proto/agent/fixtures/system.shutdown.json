@@ -1,0 +1,8 @@
+{
+  "method": "system.shutdown",
+  "params": {
+    "reboot": true,
+    "deadline_ms": 15000
+  },
+  "result": {}
+}

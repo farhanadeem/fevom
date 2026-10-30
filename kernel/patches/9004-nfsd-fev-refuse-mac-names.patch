@@ -1,0 +1,64 @@
+diff --git a/fs/nfsd/nfs4proc.c b/fs/nfsd/nfs4proc.c
+--- a/fs/nfsd/nfs4proc.c
++++ b/fs/nfsd/nfs4proc.c
+@@ -58,6 +58,20 @@
+ 		 "Enable inter server to server copy offload. Default: false");
+ 
+ static void cleanup_async_copy(struct nfsd4_copy *copy);
++
++static bool fev_refuse_mac_names;
++module_param(fev_refuse_mac_names, bool, 0644);
++MODULE_PARM_DESC(fev_refuse_mac_names,
++		 "refuse to create ._* and .DS_Store names (fev's view)");
++
++static bool fev_mac_name(const char *name, u32 len)
++{
++	if (!READ_ONCE(fev_refuse_mac_names))
++		return false;
++	if (len >= 2 && name[0] == '.' && name[1] == '_')
++		return true;
++	return len == 9 && !memcmp(name, ".DS_Store", 9);
++}
+ 
+ #ifdef CONFIG_NFSD_V4_2_INTER_SSC
+ static int nfsd4_ssc_umount_timeout = 900000;		/* default to 15 mins */
+@@ -635,6 +649,10 @@
+ 	switch (open->op_claim_type) {
+ 	case NFS4_OPEN_CLAIM_DELEGATE_CUR:
+ 	case NFS4_OPEN_CLAIM_NULL:
++		status = nfserr_acces;
++		if (open->op_create &&
++		    fev_mac_name(open->op_fname, open->op_fnamelen))
++			goto out;
+ 		status = do_open_lookup(rqstp, cstate, open, &resfh);
+ 		if (status)
+ 			goto out;
+@@ -846,6 +864,10 @@
+ 
+ 	status = check_attr_support(cstate, create->cr_bmval, nfsd_attrmask);
+ 	if (status)
++		goto out_aftermask;
++
++	status = nfserr_acces;
++	if (fev_mac_name(create->cr_name, create->cr_namelen))
+ 		goto out_aftermask;
+ 
+ 	/* Sanitize cr_type to avoid returning ATTRNOTSUPP. */
+@@ -978,6 +1000,8 @@
+ 	struct nfsd4_link *link = &u->link;
+ 	__be32 status;
+ 
++	if (fev_mac_name(link->li_name, link->li_namelen))
++		return nfserr_acces;
+ 	status = nfsd_link(rqstp, &cstate->current_fh,
+ 			   link->li_name, link->li_namelen, &cstate->save_fh);
+ 	if (!status)
+@@ -1134,6 +1158,8 @@
+ 
+ 	if (opens_in_grace(SVC_NET(rqstp)))
+ 		return nfserr_grace;
++	if (fev_mac_name(rename->rn_tname, rename->rn_tnamelen))
++		return nfserr_acces;
+ 	status = nfsd_rename(rqstp, &cstate->save_fh, rename->rn_sname,
+ 			     rename->rn_snamelen, &cstate->current_fh,
+ 			     rename->rn_tname, rename->rn_tnamelen);

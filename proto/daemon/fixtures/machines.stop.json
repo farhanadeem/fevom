@@ -1,0 +1,22 @@
+{
+  "method": "machines.stop",
+  "params": {
+    "name": "f43"
+  },
+  "result": {
+    "name": "f43",
+    "state": "stopped",
+    "image": {
+      "distro": "fedora",
+      "release": "43",
+      "arch": "arm64",
+      "variant": "default",
+      "serial": "20261014_20:33"
+    },
+    "user": "ada",
+    "address": "198.19.0.11",
+    "disk_size": 402653184,
+    "since": "2026-10-14T10:02:17Z",
+    "last_exit": "stopped"
+  }
+}

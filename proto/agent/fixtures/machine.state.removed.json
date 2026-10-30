@@ -1,0 +1,20 @@
+{
+  "method": "machine.state",
+  "notification": true,
+  "params": {
+    "name": "scratch",
+    "state": "stopped",
+    "image": {
+      "distro": "alpine",
+      "release": "3.23",
+      "arch": "arm64",
+      "variant": "default",
+      "serial": "20261014_13:00"
+    },
+    "uuid": "e4da3b7f-bbce-4345-8d77-7f5a6c3b2a19",
+    "init": "openrc",
+    "disk_bytes": 8388608,
+    "last_exit": "stopped",
+    "removed": true
+  }
+}

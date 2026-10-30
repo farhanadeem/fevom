@@ -1,0 +1,35 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Seccomp/SeccompEmulator.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Seccomp/SeccompEmulator.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Seccomp/SeccompEmulator.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Seccomp/SeccompEmulator.cpp
+@@ -462,6 +462,8 @@
+ }
+ 
+ // Equivalent to seccomp(SECCOMP_SET_MODE_STRICT, ...);
++static thread_local bool InstallingStrict = false;
++
+ uint64_t SeccompEmulator::SetModeStrict(FEXCore::Core::CpuStateFrame* Frame, uint32_t flags, const void* arg) {
+   const auto Thread = FEX::HLE::ThreadManager::GetStateObjectFromCPUState(Frame);
+ 
+@@ -524,7 +526,12 @@
+   };
+   CurrentKillSignal = SIGKILL;
+   const sock_fprog* prog = Is64BitMode() ? &prog_x64 : &prog_x32;
+-  SetModeFilter(Frame, 0, prog);
++  InstallingStrict = true;
++  const auto Result = SetModeFilter(Frame, 0, prog);
++  InstallingStrict = false;
++  if (Result != 0) {
++    return Result;
++  }
+   Thread->SeccompMode = SECCOMP_MODE_STRICT;
+ 
+   return 0;
+@@ -630,7 +637,7 @@
+     return -EFAULT;
+   }
+ 
+-  if (::prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) == 0 && !HasEffectiveSysAdmin()) {
++  if (!InstallingStrict && ::prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) == 0 && !HasEffectiveSysAdmin()) {
+     // The caller did not have the CAP_SYS_ADMIN capability in its user namespace, or had not set no_new_privs before using SECCOMP_SET_MODE_FILTER.
+     return -EACCES;
+   }

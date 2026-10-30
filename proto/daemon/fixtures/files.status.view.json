@@ -1,0 +1,26 @@
+{
+  "method": "files.status",
+  "params": {},
+  "result": {
+    "share": true,
+    "root": "/",
+    "mount": "/mnt/mac",
+    "hidden": [
+      "/Users/someone/.fev/data",
+      "/Users/someone/.fev/run"
+    ],
+    "events": true,
+    "watch": {
+      "seq": 3,
+      "paths": [
+        "/Users/someone/src/app"
+      ]
+    },
+    "view": {
+      "state": "mounted",
+      "path": "/Users/someone/Fevom",
+      "socket": "/Users/someone/.fev/run/view.sock",
+      "hidden": false
+    }
+  }
+}

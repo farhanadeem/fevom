@@ -1,0 +1,122 @@
+diff --git a/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp b/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
+--- a/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
+@@ -169,6 +169,7 @@
+         if (!Op->CallReturnBlock.IsInvalid()) {
+           auto CallReturnAddressReg = GetReg(Op->CallReturnAddress).X();
+           PendingCallReturnTargetLabel = &CallReturnTargets.try_emplace(Op->CallReturnBlock.ID()).first->second;
++          FevomCallReturnBlocks.insert(Op->CallReturnBlock.ID());
+           (void)adr(TMP1, &l_CallReturn);
+           stp<ARMEmitter::IndexType::PRE>(CallReturnAddressReg, TMP1, REG_CALLRET_SP, -0x10);
+         } else {
+@@ -224,6 +225,7 @@
+       if (!Op->CallReturnBlock.IsInvalid()) {
+         auto CallReturnAddressReg = GetReg(Op->CallReturnAddress).X();
+         PendingCallReturnTargetLabel = &CallReturnTargets.try_emplace(Op->CallReturnBlock.ID()).first->second;
++        FevomCallReturnBlocks.insert(Op->CallReturnBlock.ID());
+         (void)adr(TMP1, &l_CallReturn);
+         stp<ARMEmitter::IndexType::PRE>(CallReturnAddressReg, TMP1, REG_CALLRET_SP, -0x10);
+       } else {
+diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+--- a/FEXCore/Source/Interface/Core/JIT/JIT.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+@@ -826,9 +826,11 @@
+ #endif
+ }
+ 
+-void Arm64JITCore::EmitEntryPoint([[maybe_unused]] ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF) {
++void Arm64JITCore::EmitEntryPoint([[maybe_unused]] ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF, bool CallReturn) {
+ 
+-  EmitSuspendInterruptCheck();
++  if (!CallReturn) {
++    EmitSuspendInterruptCheck();
++  }
+ 
+   if (CheckTF) {
+     EmitTFCheck();
+@@ -924,8 +926,10 @@
+   uint32_t SSACount = IR->GetSSACount();
+   JumpTargets.clear();
+   CallReturnTargets.clear();
++  FevomCallReturnBlocks.clear();
+   PendingJumpThunks.clear();
+   Tier0OutOfLineEntries.clear();
++  FevomLookupEntries.clear();
+   JumpTargets.resize(IR->GetHeader()->BlockCount, {});
+   Relocations.resize(PrevNumAllocations, FEXCore::CPU::Relocation::Default()); // Discard any relocations generated from a previous attempt
+ 
+@@ -1022,10 +1026,15 @@
+         PendingCallReturnTargetLabel = nullptr;
+ 
+         BindOrRestart(&IsReturnTarget->second);
+-        CodeData.EntryPoints.emplace(BlockStartRIP, GetCursorAddress<uint8_t*>());
++        const bool CallReturn = FevomCallReturnBlocks.contains(Node);
++        if (CallReturn) {
++          FevomLookupEntries.push_back({BlockStartRIP, BlockIROp->GuestEntryOffset, &IsReturnTarget->second});
++        } else {
++          CodeData.EntryPoints.emplace(BlockStartRIP, GetCursorAddress<uint8_t*>());
++        }
+         DebugData->GuestOpcodes.push_back({BlockIROp->GuestEntryOffset, GetCursorAddress<uint8_t*>() - CodeData.BlockBegin});
+ 
+-        EmitEntryPoint(JITCodeHeaderLabel, CheckTF);
++        EmitEntryPoint(JITCodeHeaderLabel, CheckTF, CallReturn);
+       }
+ 
+       if (PendingCallReturnTargetLabel) {
+@@ -1069,11 +1078,19 @@
+   for (auto& E : Tier0OutOfLineEntries) {
+     CodeData.EntryPoints.emplace(E.RIP, GetCursorAddress<uint8_t*>());
+     DebugData->GuestOpcodes.push_back({E.GuestEntryOffset, GetCursorAddress<uint8_t*>() - CodeData.BlockBegin});
+-    EmitEntryPoint(JITCodeHeaderLabel, CheckTF);
++    EmitEntryPoint(JITCodeHeaderLabel, CheckTF, false);
+     b_OrRestart(E.Target);
+   }
+   Tier0OutOfLineEntries.clear();
+ 
++  for (auto& E : FevomLookupEntries) {
++    CodeData.EntryPoints.emplace(E.RIP, GetCursorAddress<uint8_t*>());
++    DebugData->GuestOpcodes.push_back({E.GuestEntryOffset, GetCursorAddress<uint8_t*>() - CodeData.BlockBegin});
++    EmitSuspendInterruptCheck();
++    b_OrRestart(E.Target);
++  }
++  FevomLookupEntries.clear();
++
+   ARMEmitter::ForwardLabel l_ExitLink;
+   for (auto& PendingJumpThunk : PendingJumpThunks) {
+     // Align as 64-bit atomics are used on the HostCode field.
+diff --git a/FEXCore/Source/Interface/Core/JIT/JITClass.h b/FEXCore/Source/Interface/Core/JIT/JITClass.h
+--- a/FEXCore/Source/Interface/Core/JIT/JITClass.h
++++ b/FEXCore/Source/Interface/Core/JIT/JITClass.h
+@@ -20,6 +20,7 @@
+ #include <FEXCore/IR/IR.h>
+ #include <FEXCore/Utils/LogManager.h>
+ #include <FEXCore/fextl/map.h>
++#include <FEXCore/fextl/set.h>
+ #include <FEXCore/fextl/memory.h>
+ #include <FEXCore/fextl/string.h>
+ #include <FEXCore/fextl/vector.h>
+@@ -101,6 +102,7 @@
+   }
+ 
+   fextl::map<IR::NodeID, ARMEmitter::BiDirectionalLabel> CallReturnTargets;
++  fextl::set<IR::NodeID> FevomCallReturnBlocks;
+ 
+   struct PendingJumpThunk {
+     uint64_t CallerAddress;
+@@ -116,6 +118,7 @@
+     ARMEmitter::BiDirectionalLabel* Target;
+   };
+   fextl::vector<Tier0Entry> Tier0OutOfLineEntries;
++  fextl::vector<Tier0Entry> FevomLookupEntries;
+ 
+   Utils::PoolBufferWithTimedRetirement<uint8_t*, 5000, 500> TempCodeBufferAllocator;
+ 
+@@ -645,7 +648,7 @@
+   int64_t EmitBackedgeInterruptCheck(IR::OrderedNodeWrapper TargetBlock);
+   void EndBackedgeInterruptCheck(int64_t Prev);
+ 
+-  void EmitEntryPoint(ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF);
++  void EmitEntryPoint(ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF, bool CallReturn);
+ 
+   [[nodiscard]] CodeBuffer::CodeBufferAllocation AllocateCodeBufferInSharedCache(size_t Size);
+ 

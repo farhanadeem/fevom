@@ -1,0 +1,48 @@
+defaultseccomp_arm64.bpf — provenance
+
+What it is
+  Docker's fixed default seccomp program, as the raw kernel struct sock_filter
+  array (little-endian, 8 bytes per instruction). One filter layer, 846
+  instructions, 6768 bytes. Multi-arch validation prologue for AUDIT_ARCH_AARCH64
+  (0xc00000b7) and AUDIT_ARCH_ARM (0x40000028); default action SCMP_ACT_ERRNO.
+
+Source (named)
+  Docker's default profile, github.com/moby/profiles/seccomp (Apache-2.0), as
+  fev's engine applies it to every default container: dockerd docker-v29.9.0
+  (moby, inputs.lock), which hands the profile to runc v1.5.2, which compiles it
+  to classic BPF with libseccomp v2.6.1 at the container's start. fev links no
+  libseccomp (LGPL), so the compiled program is captured by dumping it from a running default container
+  rather than compiled here.
+
+Digest
+  sha256 4b2732e76a6ca9d3b16fe4e782c24ea27ad239318bdd6cc635a13acd94da96df
+  (6768 bytes, 846 instructions). TestDefaultSeccompIsTheRecordedCapture pins
+  it, and the three versions above against inputs.lock: a bump of the engine,
+  runc or libseccomp fails that test until the program is captured again
+  (below) and the digest and versions here and in defaultseccomp.go are set to
+  the new capture's.
+
+How it was captured (regeneration)
+  1. Start a default container (default seccomp, default capabilities) on fev's
+     engine:  docker run -d --name d alpine:latest sleep 400
+  2. From a sibling sharing its PID namespace, with CAP_SYS_PTRACE + CAP_SYS_ADMIN
+     and seccomp unconfined, read the target init's filter stack with
+     PTRACE_SECCOMP_GET_FILTER for every index until it ends (the same mechanism
+     as guest/debug/attach DumpTargetStack):
+       docker run --rm --pid=container:d --cap-add SYS_PTRACE --cap-add SYS_ADMIN \
+         --security-opt seccomp=unconfined -v out:/out <dumper> 1
+  3. Serialise filter index 0's instructions (a default container has exactly one
+     layer) as the little-endian sock_filter array -> this file.
+  Captured 2026-10-23 on fev's build-host engine; 846 instructions.
+
+Verification
+  guest/debug/attach TestDefaultSeccompProgram interprets the embedded program in
+  pure Go and asserts: keyctl/add_key/request_key/bpf/mount/reboot/init_module/
+  kexec_load ERRNO; unshare and clone(CLONE_NEWUSER) ERRNO; read/write/openat/
+  execve/clone(no new-ns flags)/brk/personality ALLOW; a foreign-arch call KILLed.
+
+Fixed data; the compiler is beside it
+  This is the fixed default program for a container with no seccomp profile of its
+  own. A stopped container's own custom profile is compiled to its exact filter by
+  seccompcompile.go, held equal to the engine's own
+  libseccomp program decision for decision.

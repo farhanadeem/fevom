@@ -1,0 +1,16 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 16,
+    "state": "running",
+    "engine": "ready",
+    "boot_id": "a3f9c2",
+    "since": "2026-10-18T09:12:30.2Z",
+    "pending_restart": [],
+    "emulation": {
+      "state": "unavailable",
+      "error": "the system image has no x86 translator at /system/emu/FEX"
+    }
+  }
+}

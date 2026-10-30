@@ -1,0 +1,11 @@
+{
+  "method": "log.entry",
+  "notification": true,
+  "params": {
+    "subscription": 4,
+    "source": "machine:dev",
+    "time_ms": 81234.5,
+    "level": 6,
+    "text": "[  OK  ] Reached target multi-user.target - Multi-User System."
+  }
+}

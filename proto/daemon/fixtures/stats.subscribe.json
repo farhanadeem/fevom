@@ -1,0 +1,9 @@
+{
+  "method": "stats.subscribe",
+  "params": {
+    "interval_ms": 1000
+  },
+  "result": {
+    "subscription": 5
+  }
+}

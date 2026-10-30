@@ -1,0 +1,13 @@
+name: dev
+state: running
+distro: ubuntu
+version: questing
+arch: arm64
+variant: cloud
+build: 20261014_07:42
+user: ada
+default: yes
+address: 198.19.0.10
+address6: fd5e:1c2b:9a40:1:216:3eff:fe2a:a
+disk usage: 1.2 GiB
+since: 2026-10-14T09:12:41Z

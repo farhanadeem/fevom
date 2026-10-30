@@ -1,0 +1,4 @@
+NAME  STATE    DISTRO  VERSION   ARCH   SIZE       ADDRESS
+dev   running  ubuntu  questing  arm64  1.2 GiB    198.19.0.10
+f43   stopped  fedora  43        arm64  384.0 MiB  198.19.0.11
+old   failed   alpine  3.23      arm64  50.0 MiB   198.19.0.13

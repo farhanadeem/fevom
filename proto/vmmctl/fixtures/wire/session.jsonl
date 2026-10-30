@@ -1,0 +1,29 @@
+> {"jsonrpc":"2.0","id":1,"method":"stats"}
+< {"jsonrpc":"2.0","id":1,"result":{"api_version":1,"build":"be3f324","state":"running","at_ns":2012829000000000,"pauses":0,"total_offset_ns":0,"resets":0,"vcpus":[{"cpu_ns":1840000000,"exits":51234},{"cpu_ns":920000000,"exits":30112}],"memory":{"guest_bytes":8589934592,"footprint_bytes":674234368,"resident_bytes":612368384,"compressed_bytes":0,"released_bytes":3659530240,"released_ranges":1745},"devices":{"balloon":{"reports":1745},"disk1":{"flushes":212,"reads":18422,"writes":9051}}}}
+> {"jsonrpc":"2.0","id":2,"method":"pause"}
+< {"jsonrpc":"2.0","id":2,"result":{"state":"paused","changed":true,"vcpus":10,"took_ns":412000,"paused_at_ns":2012830000000000}}
+> {"jsonrpc":"2.0","id":3,"method":"pause"}
+< {"jsonrpc":"2.0","id":3,"result":{"state":"paused","changed":false,"vcpus":10,"took_ns":0,"paused_at_ns":2012830000000000}}
+> {"jsonrpc":"2.0","id":4,"method":"stats"}
+< {"jsonrpc":"2.0","id":4,"result":{"api_version":1,"build":"be3f324","state":"paused","at_ns":2012830000500000,"pauses":1,"total_offset_ns":0,"paused_at_ns":2012830000000000,"resets":0,"vcpus":[{"cpu_ns":1840000000,"exits":51235},{"cpu_ns":920000000,"exits":30113}],"memory":{"guest_bytes":8589934592,"footprint_bytes":674234368,"resident_bytes":612368384,"compressed_bytes":0,"released_bytes":3659530240,"released_ranges":1745}}}
+> {"jsonrpc":"2.0","id":5,"method":"resume"}
+< {"jsonrpc":"2.0","id":5,"result":{"state":"running","changed":true,"vcpus":10,"took_ns":187000,"offset_ns":30000250000,"total_offset_ns":30000250000}}
+> {"jsonrpc":"2.0","id":6,"method":"resume"}
+< {"jsonrpc":"2.0","id":6,"result":{"state":"running","changed":false,"vcpus":10,"took_ns":0,"offset_ns":0,"total_offset_ns":30000250000}}
+> {"jsonrpc":"2.0","id":7,"method":"budget","params":{"available_bytes":16106127360,"image_bytes":4294967296,"margin_bytes":5368709120}}
+< {"jsonrpc":"2.0","id":7,"result":{"held_requests":0}}
+< {"jsonrpc":"2.0","method":"space","params":{"available_bytes":15569256448,"image_bytes":4563402752,"held_requests":0,"at_ns":2012850000000000}}
+< {"jsonrpc":"2.0","method":"space","params":{"available_bytes":33554432,"image_bytes":21474836480,"held_requests":3,"at_ns":2012855000000000}}
+> {"jsonrpc":"2.0","id":8,"method":"budget","params":{"available_bytes":1073741824,"image_bytes":21474836480,"margin_bytes":5368709120}}
+< {"jsonrpc":"2.0","id":8,"result":{"held_requests":3}}
+< {"jsonrpc":"2.0","method":"reset","params":{"count":1,"at_ns":2012860000000000}}
+> {"jsonrpc":"2.0","id":9,"method":"hotplug"}
+< {"jsonrpc":"2.0","id":9,"error":{"code":-32601,"message":"method \"hotplug\" not found"}}
+> {"jsonrpc":"2.0","id":10,"method":"stop"}
+< {"jsonrpc":"2.0","id":10,"result":{}}
+> {"jsonrpc":"2.0","id":11,"method":"pause"}
+< {"jsonrpc":"2.0","id":11,"error":{"code":-32006,"message":"the machine is stopping"}}
+> {"jsonrpc":"2.0","id":12,"method":"stats"}
+< {"jsonrpc":"2.0","id":12,"result":{"api_version":1,"build":"be3f324","state":"stopping","at_ns":2012861000000000,"pauses":1,"total_offset_ns":30000250000,"resets":1,"vcpus":[],"memory":{"guest_bytes":2147483648,"footprint_bytes":0,"resident_bytes":0,"compressed_bytes":0,"released_bytes":0,"released_ranges":0},"windows":{"data_disk":{"state":"failed","reason":"mmap: Cannot allocate memory","size_bytes":0},"file_share":{"state":"on","size_bytes":4294967296,"guest_addr":137438953472,"mappings":397000,"unmappings":396200,"live":800,"faults":12}}}}
+> {"jsonrpc":"2.0","id":13,"method":"kill"}
+< {"jsonrpc":"2.0","id":13,"result":{}}

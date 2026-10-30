@@ -1,0 +1,17 @@
+{
+  "method": "operation.cancel",
+  "params": {
+    "id": "op-20261014T104500-3"
+  },
+  "result": {
+    "id": "op-20261014T104500-3",
+    "method": "machines.import",
+    "target": "dev-copy",
+    "state": "cancelled",
+    "phase": "archive",
+    "done_bytes": 104857600,
+    "total_bytes": 413138944,
+    "started": "2026-10-14T10:45:00Z",
+    "ended": "2026-10-14T10:45:09Z"
+  }
+}

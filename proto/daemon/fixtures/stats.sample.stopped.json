@@ -1,0 +1,9 @@
+{
+  "method": "stats.sample",
+  "notification": true,
+  "params": {
+    "subscription": 5,
+    "time": "2026-10-10T23:01:12.5Z",
+    "state": "stopped"
+  }
+}

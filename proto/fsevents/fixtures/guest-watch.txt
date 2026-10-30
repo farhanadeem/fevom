@@ -1,0 +1,5 @@
+watch seq=1 paths=4
+  "/Users/someone/src/app"
+  "/private/tmp/tmp.Xq3 f"
+  "/Volumes/Donn\xc3\xa9es/projet"
+  "/"

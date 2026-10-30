@@ -1,0 +1,6 @@
+fev: create dev: download
+fev: create dev: cloud-init reported errors; the machine is running
+  ('scripts_user', RuntimeError('Runparts: 1 failures (runcmd) in 1 attempted commands'))
+the end of /var/log/cloud-init-output.log:
+  + false
+  2026-10-15 09:12:41,203 - cc_scripts_user.py[WARNING]: Failed to run module scripts_user

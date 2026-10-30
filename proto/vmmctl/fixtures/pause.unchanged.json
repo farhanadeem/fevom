@@ -1,0 +1,11 @@
+{
+  "method": "pause",
+  "params": {},
+  "result": {
+    "state": "paused",
+    "changed": false,
+    "vcpus": 10,
+    "took_ns": 0,
+    "paused_at_ns": 2012830000000000
+  }
+}

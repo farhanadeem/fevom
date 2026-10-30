@@ -1,0 +1,31 @@
+{
+  "method": "stats.sample",
+  "notification": true,
+  "params": {
+    "subscription": 5,
+    "time": "2026-10-10T22:14:04.5Z",
+    "state": "paused",
+    "vmm": {
+      "cpu_ms": 2760,
+      "guest_bytes": 8589934592,
+      "footprint_bytes": 674234368,
+      "held_bytes": 612368384,
+      "released_bytes": 3659530240,
+      "windows": {
+        "data_disk": {
+          "state": "on",
+          "size_bytes": 274877906944,
+          "reads": 1048576,
+          "faults": 3
+        },
+        "file_share": {
+          "state": "on",
+          "size_bytes": 4294967296,
+          "mappings": 397000,
+          "live": 800,
+          "faults": 12
+        }
+      }
+    }
+  }
+}

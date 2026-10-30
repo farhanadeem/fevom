@@ -1,0 +1,9 @@
+{
+  "method": "config.remove",
+  "params": {"key": "machine.sandbox.mounts", "values": ["/Users/ada/Downloads/data:/data"]},
+  "result": {
+    "changed": [
+      {"key": "machine.sandbox.mounts", "value": ["/Users/ada/src/project"], "apply": "machine_restart", "pending": true}
+    ]
+  }
+}

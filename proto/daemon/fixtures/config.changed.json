@@ -1,0 +1,11 @@
+{
+  "method": "config.changed",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "key": "memory_mib",
+    "value": 4096,
+    "apply": "vm_restart",
+    "pending": true
+  }
+}

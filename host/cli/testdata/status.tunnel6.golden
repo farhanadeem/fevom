@@ -1,0 +1,8 @@
+state: running
+engine: ready
+since: 2026-10-16T14:02:11Z
+boot: e81a07
+data: 6.0 GiB used, 106.0 GiB more can be written (the Mac's free space less what fev keeps free; df in a container shows it)
+direct access: on, 198.19.0.0/16 and fd5b:6e2a:91c0::/48 routed to containers and machines through utun9, and as this network's NAT64 prefix 64:ff9b::/96 makes them
+names: *.fev.local answered on this Mac (127.0.0.1:15353), 3 registered
+https: on, fev's root trusted by this Mac; its key in the login keychain, held by fev's key signer, never exportable

@@ -1,0 +1,30 @@
+{
+  "method": "machine.start",
+  "params": {
+    "name": "f43",
+    "config": {
+      "user": "ada",
+      "mac": "02:42:c6:13:00:0b",
+      "address": "198.19.0.11",
+      "share": true
+    }
+  },
+  "result": {
+    "name": "f43",
+    "state": "running",
+    "image": {
+      "distro": "fedora",
+      "release": "43",
+      "arch": "arm64",
+      "variant": "default",
+      "serial": "20261014_20:33"
+    },
+    "uuid": "c9f0f895-fb98-4b91-9f3e-2a1d6c7e8b20",
+    "init": "systemd",
+    "address": "198.19.0.11",
+    "pid": 3120,
+    "started_ms": 90551.2,
+    "ready_ms": 91320.8,
+    "disk_bytes": 402653184
+  }
+}

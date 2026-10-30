@@ -1,0 +1,7 @@
+{
+  "method": "exec.close",
+  "params": {
+    "id": 7
+  },
+  "result": {}
+}

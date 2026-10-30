@@ -1,0 +1,12 @@
+{
+  "method": "view.start",
+  "params": {
+    "uid": 501,
+    "gid": 20,
+    "threads": 4
+  },
+  "result": {
+    "state": "starting",
+    "since": "2026-10-17T08:12:03.204Z"
+  }
+}

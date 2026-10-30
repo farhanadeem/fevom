@@ -1,0 +1,10 @@
+{
+  "method": "space",
+  "notification": true,
+  "params": {
+    "available_bytes": 33554432,
+    "image_bytes": 21474836480,
+    "held_requests": 3,
+    "at_ns": 2012855000000000
+  }
+}

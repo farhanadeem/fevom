@@ -1,0 +1,47 @@
+Written offer of source code
+============================
+
+Fevom includes programs and libraries licensed under the GNU General Public
+License (GPL-2.0, GPL-3.0) and the GNU Lesser General Public License
+(LGPL-2.1, LGPL-3.0). They are listed in README.txt and, with exact
+versions and SHA-256 sums, in inputs.lock.
+
+For at least three years from the date you received this copy of fev,
+Farhan Nadeem, who distributes fev, will give you, or any third party, on
+request to farhannadiim@gmail.com, a complete machine-readable copy of the
+corresponding source code of each of them, for no more than the cost of
+making and sending the copy.
+This covers:
+
+  - fev itself (GPL-3.0-or-later, LICENSE): the source tree this build
+    was made from, which is also published as the tag of the same version
+    in fev's repository, https://github.com/farhanadeem/fevom;
+  - the Linux kernel in Resources/guest/Image: the upstream release named in
+    the kernel's manifest (Resources/guest/Image.manifest) together with
+    fev's patches and added files (kernel/patches, kernel/src) and its
+    configuration (kernel/config) in fev's source tree;
+  - btrfs-progs and busybox, as released upstream (URLs and sums in
+    inputs.lock), with busybox's configuration (guest/busybox/config);
+  - the libraries their own builds link statically into them (inputs.lock's
+    "linked" lines name each one's Debian package and version; their
+    copyright files are in guest/btrfs-progs/linked and guest/busybox/linked):
+    into btrfs-progs, glibc 2.41-12+deb13u4 (LGPL-2.1), libblkid from
+    util-linux 2.41.5-0+deb13u1 (LGPL-2.1), libuuid from the same (BSD-3-Clause),
+    zlib 1.3.1 (Zlib), lzo 2.10 (GPL-2.0) and zstd 1.5.7 (BSD-3-Clause); into
+    busybox, glibc 2.41-12+deb13u4: the Debian source packages of those
+    versions, from snapshot.debian.org; with btrfs-progs' and busybox's
+    source above and fev's build of them (guest/sysimage in fev's
+    source tree), they can be relinked against a changed glibc or libblkid;
+  - every Debian package in the system image (iptables, nftables, procps
+    and the libraries in inputs.lock, glibc's libc6 among them): the Debian
+    source packages of the same versions, from snapshot.debian.org;
+  - glibc 2.41-12+deb13u4 and the GCC runtime (libstdc++), as linked into
+    FEX (guest/fex/BUILD names both);
+  - glibc and libseccomp as linked by Docker into its static engine
+    binaries (Docker's static build of docker 29.9.0; runc 1.5.2's own
+    release builds use libseccomp 2.6.1).
+
+Most of this source is public at the addresses inputs.lock names, and
+fev's own source tree, which comes with every build given away, has the
+scripts that fetch and build it. Ask for a copy at farhannadiim@gmail.com,
+or ask the person who gave you fev on Farhan Nadeem's behalf.

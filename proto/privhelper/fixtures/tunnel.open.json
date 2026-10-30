@@ -1,0 +1,10 @@
+{
+  "method": "tunnel.open",
+  "params": {"mtu": 1500},
+  "result": {
+    "interface": "utun9",
+    "mac": "198.19.3.1",
+    "peer": "198.19.3.2",
+    "mtu": 1500
+  }
+}

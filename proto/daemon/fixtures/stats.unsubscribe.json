@@ -1,0 +1,7 @@
+{
+  "method": "stats.unsubscribe",
+  "params": {
+    "subscription": 5
+  },
+  "result": {}
+}

@@ -1,0 +1,10 @@
+{
+  "method": "daemon.shutdown",
+  "params": {
+    "stop_requested": true,
+    "stop_began_ns": 1
+  },
+  "result": {
+    "superseded": true
+  }
+}

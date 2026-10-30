@@ -1,0 +1,56 @@
+{
+  "method": "system.info",
+  "params": {},
+  "result": {
+    "kernel": "7.2.9",
+    "uptime_ms": 1234,
+    "cpus": 2,
+    "mem_total_kb": 1013000,
+    "mem_available_kb": 960000,
+    "interfaces": [
+      {
+        "name": "lo",
+        "up": true,
+        "addresses": [
+          "127.0.0.1/8"
+        ]
+      },
+      {
+        "name": "eth0",
+        "up": true,
+        "addresses": [
+          "198.19.1.2/24"
+        ]
+      }
+    ],
+    "mounts": [
+      {
+        "source": "/dev/vda",
+        "target": "/data",
+        "fstype": "ext4"
+      },
+      {
+        "source": "mac",
+        "target": "/mnt/mac",
+        "fstype": "virtiofs"
+      }
+    ],
+    "cgroup_controllers": [
+      "cpuset",
+      "cpu",
+      "io",
+      "memory",
+      "pids"
+    ],
+    "file_share": {
+      "tag": "mac",
+      "target": "/mnt/mac",
+      "device": true,
+      "feed": "connected",
+      "watching": 2,
+      "records": 4117,
+      "refused": 0,
+      "invalidations": 1
+    }
+  }
+}

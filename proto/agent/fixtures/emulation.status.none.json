@@ -1,0 +1,13 @@
+{
+  "method": "emulation.status",
+  "params": {},
+  "result": {
+    "x86": true,
+    "registered": false,
+    "memory_model": false,
+    "table_enabled": true,
+    "entries": [],
+    "restored": 0,
+    "error": "the system image has no x86 translator at /system/emu/FEX"
+  }
+}

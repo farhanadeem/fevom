@@ -1,0 +1,9 @@
+{
+  "method": "exec.exit",
+  "notification": true,
+  "params": {
+    "id": 7,
+    "exit_code": -1,
+    "signal": 2
+  }
+}

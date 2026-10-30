@@ -1,0 +1,265 @@
+diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
+@@ -1895,7 +1895,23 @@
+ endif # ARMV8_DEPRECATED
+ 
+ endif # COMPAT
++
++config ARM64_MEMORY_MODEL_CONTROL
++	bool "Per-thread memory model control (x86 TSO for emulators)"
++	help
++	  Apple's CPUs can run a thread under x86's total store order
++	  (TSO), which an x86 emulator otherwise has to build out of
++	  ordered loads and stores. With this option a thread asks for it
++	  with prctl(PR_SET_MEM_MODEL, PR_SET_MEM_MODEL_TSO); it is
++	  inherited by fork and clone and reset by exec. The mode is bit 1
++	  of ACTLR_EL1, offered where AIDR_EL1 bit 9 is set on an Apple
++	  implementer, as Hypervisor.framework offers it to a guest.
+ 
++	  Under a hypervisor every access to ACTLR_EL1 traps, so the
++	  register is written at a context switch only when the next
++	  thread's mode differs from what the CPU holds, and never read
++	  there.
++
+ menu "ARMv8.1 architectural features"
+ 
+ config ARM64_HW_AFDBM
+diff --git a/arch/arm64/include/asm/cpufeature.h b/arch/arm64/include/asm/cpufeature.h
+--- a/arch/arm64/include/asm/cpufeature.h
++++ b/arch/arm64/include/asm/cpufeature.h
+@@ -955,6 +955,11 @@
+ 	return 8;
+ }
+ 
++#define AIDR_APPLE_TSO		BIT(9)
++#define ACTLR_APPLE_TSO		BIT(1)
++
++void cpu_enable_tso_apple(const struct arm64_cpu_capabilities *__unused);
++
+ s64 arm64_ftr_safe_value(const struct arm64_ftr_bits *ftrp, s64 new, s64 cur);
+ struct arm64_ftr_reg *get_arm64_ftr_reg(u32 sys_id);
+ 
+diff --git a/arch/arm64/include/asm/processor.h b/arch/arm64/include/asm/processor.h
+--- a/arch/arm64/include/asm/processor.h
++++ b/arch/arm64/include/asm/processor.h
+@@ -195,6 +195,9 @@
+ 	u64			svcr;
+ 	u64			tpidr2_el0;
+ 	u64			por_el0;
++#ifdef CONFIG_ARM64_MEMORY_MODEL_CONTROL
++	u64			actlr_tso;
++#endif
+ #ifdef CONFIG_ARM64_GCS
+ 	unsigned int		gcs_el0_mode;
+ 	unsigned int		gcs_el0_locked;
+diff --git a/arch/arm64/kernel/cpufeature.c b/arch/arm64/kernel/cpufeature.c
+--- a/arch/arm64/kernel/cpufeature.c
++++ b/arch/arm64/kernel/cpufeature.c
+@@ -2564,9 +2564,27 @@
+ 
+ 	return !!(read_sysreg_s(SYS_ICC_IDR0_EL1) & ICC_IDR0_EL1_GCIE_LEGACY);
+ }
++
++#ifdef CONFIG_ARM64_MEMORY_MODEL_CONTROL
++static bool has_tso_apple(const struct arm64_cpu_capabilities *entry, int scope)
++{
++	if (read_cpuid_implementor() != ARM_CPU_IMP_APPLE)
++		return false;
++	return read_sysreg_s(SYS_AIDR_EL1) & AIDR_APPLE_TSO;
++}
++#endif
+ 
+ static const struct arm64_cpu_capabilities arm64_features[] = {
++#ifdef CONFIG_ARM64_MEMORY_MODEL_CONTROL
+ 	{
++		.desc = "TSO memory model (Apple)",
++		.capability = ARM64_HAS_TSO_APPLE,
++		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
++		.matches = has_tso_apple,
++		.cpu_enable = cpu_enable_tso_apple,
++	},
++#endif
++	{
+ 		.capability = ARM64_ALWAYS_BOOT,
+ 		.type = ARM64_CPUCAP_BOOT_CPU_FEATURE,
+ 		.matches = has_always,
+diff --git a/arch/arm64/kernel/process.c b/arch/arm64/kernel/process.c
+--- a/arch/arm64/kernel/process.c
++++ b/arch/arm64/kernel/process.c
+@@ -506,6 +506,9 @@
+ 
+ 		if (system_supports_poe())
+ 			p->thread.por_el0 = POR_EL0_INIT;
++#ifdef CONFIG_ARM64_MEMORY_MODEL_CONTROL
++		p->thread.actlr_tso = 0;
++#endif
+ 	}
+ 	p->thread.cpu_context.pc = (unsigned long)ret_from_fork;
+ 	p->thread.cpu_context.sp = (unsigned long)childregs;
+@@ -721,9 +724,77 @@
+ 		WARN_ONCE(daif_actual != daif_expected,
+ 			  "Unexpected DAIF value: 0x%lx (expected 0x%lx)\n",
+ 			  daif_actual, daif_expected);
++	}
++}
++
++#ifdef CONFIG_ARM64_MEMORY_MODEL_CONTROL
++static DEFINE_PER_CPU(u64, actlr_now);
++
++void cpu_enable_tso_apple(const struct arm64_cpu_capabilities *__unused)
++{
++	u64 actlr = read_sysreg(actlr_el1);
++
++	if (actlr & ACTLR_APPLE_TSO) {
++		actlr &= ~ACTLR_APPLE_TSO;
++		write_sysreg(actlr, actlr_el1);
+ 	}
++	__this_cpu_write(actlr_now, actlr);
++}
++
++static void mem_model_thread_switch(struct task_struct *next)
++{
++	u64 now, want;
++
++	if (!alternative_has_cap_unlikely(ARM64_HAS_TSO_APPLE))
++		return;
++	if (next->flags & (PF_KTHREAD | PF_IDLE | PF_USER_WORKER))
++		return;
++	now = __this_cpu_read(actlr_now);
++	want = (now & ~ACTLR_APPLE_TSO) | next->thread.actlr_tso;
++	if (likely(want == now))
++		return;
++	write_sysreg(want, actlr_el1);
++	__this_cpu_write(actlr_now, want);
+ }
+ 
++static void mem_model_set_current(u64 tso)
++{
++	current->thread.actlr_tso = tso;
++	preempt_disable();
++	mem_model_thread_switch(current);
++	preempt_enable();
++}
++
++int arch_prctl_mem_model_get(struct task_struct *t)
++{
++	if (!alternative_has_cap_unlikely(ARM64_HAS_TSO_APPLE))
++		return -EINVAL;
++	return t->thread.actlr_tso ? PR_SET_MEM_MODEL_TSO : PR_SET_MEM_MODEL_DEFAULT;
++}
++
++int arch_prctl_mem_model_set(struct task_struct *t, unsigned long val)
++{
++	if (!alternative_has_cap_unlikely(ARM64_HAS_TSO_APPLE))
++		return -EINVAL;
++	switch (val) {
++	case PR_SET_MEM_MODEL_TSO:
++		mem_model_set_current(ACTLR_APPLE_TSO);
++		return 0;
++	case PR_SET_MEM_MODEL_DEFAULT:
++		mem_model_set_current(0);
++		return 0;
++	}
++	return -EINVAL;
++}
++#else
++static inline void mem_model_thread_switch(struct task_struct *next)
++{
++}
++static inline void mem_model_set_current(u64 tso)
++{
++}
++#endif
++
+ /*
+  * Thread switching.
+  */
+@@ -745,6 +816,7 @@
+ 	ptrauth_thread_switch_user(next);
+ 	permission_overlay_switch(next);
+ 	gcs_thread_switch(next);
++	mem_model_thread_switch(next);
+ 
+ 	/*
+ 	 * Complete any pending TLB or cache maintenance on this CPU in case the
+@@ -867,6 +939,7 @@
+ 	current->mm->context.flags = mmflags;
+ 	ptrauth_thread_init_user();
+ 	mte_thread_init_user();
++	mem_model_set_current(0);
+ 	do_set_tsc_mode(PR_TSC_ENABLE);
+ 
+ 	if (task_spec_ssb_noexec(current)) {
+diff --git a/arch/arm64/tools/cpucaps b/arch/arm64/tools/cpucaps
+--- a/arch/arm64/tools/cpucaps
++++ b/arch/arm64/tools/cpucaps
+@@ -65,6 +65,7 @@
+ HAS_TCR2
+ HAS_TIDCP1
+ HAS_TLB_RANGE
++HAS_TSO_APPLE
+ HAS_VA52
+ HAS_VIRT_HOST_EXTN
+ HAS_WFXT
+diff --git a/include/linux/cpu.h b/include/linux/cpu.h
+--- a/include/linux/cpu.h
++++ b/include/linux/cpu.h
+@@ -232,5 +232,7 @@
+ int arch_prctl_get_branch_landing_pad_state(struct task_struct *t, unsigned long __user *state);
+ int arch_prctl_set_branch_landing_pad_state(struct task_struct *t, unsigned long state);
+ int arch_prctl_lock_branch_landing_pad_state(struct task_struct *t);
++int arch_prctl_mem_model_get(struct task_struct *t);
++int arch_prctl_mem_model_set(struct task_struct *t, unsigned long val);
+ 
+ #endif /* _LINUX_CPU_H_ */
+diff --git a/include/uapi/linux/prctl.h b/include/uapi/linux/prctl.h
+--- a/include/uapi/linux/prctl.h
++++ b/include/uapi/linux/prctl.h
+@@ -416,4 +416,9 @@
+ # define PR_CFI_DISABLE		_BITUL(1)
+ # define PR_CFI_LOCK		_BITUL(2)
+ 
++#define PR_GET_MEM_MODEL	0x6d4d444c
++#define PR_SET_MEM_MODEL	0x4d4d444c
++# define PR_SET_MEM_MODEL_DEFAULT	0
++# define PR_SET_MEM_MODEL_TSO		1
++
+ #endif /* _LINUX_PRCTL_H */
+diff --git a/kernel/sys.c b/kernel/sys.c
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -2400,6 +2400,16 @@
+ }
+ 
+ int __weak arch_prctl_lock_branch_landing_pad_state(struct task_struct *t)
++{
++	return -EINVAL;
++}
++
++int __weak arch_prctl_mem_model_get(struct task_struct *t)
++{
++	return -EINVAL;
++}
++
++int __weak arch_prctl_mem_model_set(struct task_struct *t, unsigned long val)
+ {
+ 	return -EINVAL;
+ }
+@@ -2889,6 +2899,16 @@
+ 			return -EINVAL;
+ 		error = rseq_slice_extension_prctl(arg2, arg3);
+ 		break;
++	case PR_GET_MEM_MODEL:
++		if (arg2 || arg3 || arg4 || arg5)
++			return -EINVAL;
++		error = arch_prctl_mem_model_get(me);
++		break;
++	case PR_SET_MEM_MODEL:
++		if (arg3 || arg4 || arg5)
++			return -EINVAL;
++		error = arch_prctl_mem_model_set(me, arg2);
++		break;
+ 	case PR_GET_CFI:
+ 		if (arg2 != PR_CFI_BRANCH_LANDING_PADS)
+ 			return -EINVAL;

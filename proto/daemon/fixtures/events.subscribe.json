@@ -1,0 +1,15 @@
+{
+  "method": "events.subscribe",
+  "params": {},
+  "result": {
+    "subscription": 2,
+    "status": {
+      "seq": 7,
+      "state": "running",
+      "engine": "ready",
+      "boot_id": "b3f1c2",
+      "since": "2026-10-08T12:00:01.031Z",
+      "pending_restart": []
+    }
+  }
+}

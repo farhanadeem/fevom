@@ -1,0 +1,26 @@
+{
+  "method": "session.start",
+  "params": {
+    "machine": "f43",
+    "user": "root",
+    "argv": [
+      "dnf",
+      "-y",
+      "upgrade"
+    ],
+    "env": [
+      "TERM=xterm-256color",
+      "LANG=en_GB.UTF-8"
+    ],
+    "dir": "/mnt/mac/opt/homebrew",
+    "stdin_tty": true,
+    "rows": 50,
+    "cols": 160
+  },
+  "result": {
+    "id": 10,
+    "token": "c4b3a2918070f6e5d4c3b2a190807f6e",
+    "machine": "f43",
+    "user": "root"
+  }
+}

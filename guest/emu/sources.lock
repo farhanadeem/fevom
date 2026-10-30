@@ -1,0 +1,51 @@
+fex FEX-2610 14c92681f4d62cf84d901460e0358de09c8847a7 MIT
+submodule External/vixl 585d860b12cdfc3a72f5fdad5e02e4d50a64c014 BSD-3-Clause
+submodule Source/Common/cpp-optparse 9f94388a339fcbb0bc95c17768eb786c85988f6e MIT
+submodule External/fmt c07e2aa4b130b4fd359a1c6455a5201b17af01fa MIT
+submodule External/xxhash e626a72bc2321cd320e953a0ccf1584cad60f363 BSD-2-Clause
+submodule External/range-v3 ca1388fb9da8e69314dda222dc7b139ca84e092f BSL-1.0
+submodule External/unordered_dense 3234af2c03549bc85656bfd3a86993bf1cd8aef1 MIT
+submodule External/rpmalloc 09142d726429416bfa7b459151515fe3ab7622dd 0BSD-or-MIT
+submodule External/jemalloc_glibc 8436195ad5e1bc347d9b39743af3d29abee59f06 BSD-2-Clause
+submodule External/drm-headers 3e49836995c1dcb3df709440ad2f270b569c6a5f MIT
+submodule External/Vulkan-Headers ee2ec5fd83dafce291024683b50dc89219333076 Apache-2.0
+submodule External/zydis 9bfadd6a55fc92dbd37fa3ba089bf8b36622df4f MIT  # not compiled (ENABLE_ZYDIS off)
+submodule External/Catch2 b3fb4b9feafcd8d91c5cb510a4775143fdbef02f BSL-1.0  # not compiled (BUILD_TESTING off)
+patch 0001-fex-serverless.patch
+patch 0002-fex-allocator-madvise-range.patch
+patch 0003-fex-signal-insyscallinfo.patch
+patch 0004-fex-async-signals-at-safe-points.patch
+patch 0005-fex-elf-dyn-load-bias.patch
+patch 0006-fex-vfork-pipe-in-grandchildren.patch
+patch 0007-fex-at-secure-ignores-invoker-config.patch
+patch 0008-fex-at-secure-system-paths.patch
+patch 0009-fex-deferred-signal-mask-keeps-required-signals.patch
+patch 0010-fex-rpmalloc-no-thp.patch
+patch 0011-fex-flexbitset-word-ranges.patch
+patch 0012-fex-disk-cache-for-fev.patch
+patch 0013-fex-disk-cache-keys-memory-model.patch
+patch 0020-fex-multiblock-region-cap.patch
+patch 0030-fex-handler-mask-adds-to-interrupted.patch
+patch 0031-fex-host-handlers-block-other-signals.patch
+patch 0032-fex-at-secure-appconfig-from-resolved-name.patch
+patch 0040-fex-tier0-interpreter.patch
+patch 0041-fex-tier0-translated-blocks.patch
+patch 0060-fex-disk-cache-batched-flush.patch
+patch 0061-fex-block-header-from-host-pc.patch
+patch 0062-fex-no-safe-point-at-call-return.patch
+patch 0063-fex-latest-code-buffer-race.patch
+patch 0064-fex-no-link-across-code-buffers.patch
+patch 0065-fex-no-config-directories-made.patch
+patch 0066-fex-clone3-clear-sighand-cgroup-pidfd.patch
+patch 0067-fex-hostname-and-reboot-passthrough.patch
+patch 0068-fex-mdwe-not-on-the-host.patch
+patch 0069-fex-call-masks-let-signals-through.patch
+patch 0070-fex-seccomp-emulated-by-default.patch
+patch 0071-fex-i386-vsyscall-page-executable.patch
+patch 0072-fex-seccomp-filter-with-cap-sys-admin.patch
+patch 0073-fex-at-secure-seccomp-refused.patch
+patch 0074-fex-script-exec-under-seccomp.patch
+patch 0075-fex-mlockall-on-fault.patch
+patch 0076-fex-unknown-format-to-the-kernel.patch
+patch 0077-fex-seccomp-strict-arguments-first.patch
+patch 0078-fex-seccomp-strict-for-any-caller.patch

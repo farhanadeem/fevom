@@ -1,0 +1,49 @@
+diff --git a/fs/nfsd/vfs.c b/fs/nfsd/vfs.c
+--- a/fs/nfsd/vfs.c
++++ b/fs/nfsd/vfs.c
+@@ -33,6 +33,7 @@
+ #include <linux/security.h>
+ #include <linux/sunrpc/xdr.h>
+ #include <linux/fileattr.h>
++#include <linux/moduleparam.h>
+ 
+ #include "xdr3.h"
+ 
+@@ -53,6 +54,11 @@
+ u64 nfsd_io_cache_read __read_mostly = NFSD_IO_BUFFERED;
+ u64 nfsd_io_cache_write __read_mostly = NFSD_IO_BUFFERED;
+ 
++static bool fev_refuse_owner_change;
++module_param(fev_refuse_owner_change, bool, 0644);
++MODULE_PARM_DESC(fev_refuse_owner_change,
++		 "refuse a client's changes of owner and group (fev's view)");
++
+ /**
+  * nfserrno - Map Linux errnos to NFS errnos
+  * @errno: POSIX(-ish) error code to be mapped
+@@ -544,6 +550,13 @@
+ 	err = fh_verify(rqstp, fhp, ftype, accmode);
+ 	if (err)
+ 		return err;
++	if (READ_ONCE(fev_refuse_owner_change)) {
++		struct inode *bi = d_inode(fhp->fh_dentry);
++
++		if (((iap->ia_valid & ATTR_UID) && !uid_eq(iap->ia_uid, bi->i_uid)) ||
++		    ((iap->ia_valid & ATTR_GID) && !gid_eq(iap->ia_gid, bi->i_gid)))
++			return nfserr_perm;
++	}
+ 	if (get_write_count) {
+ 		host_err = fh_want_write(fhp);
+ 		if (host_err)
+@@ -1749,9 +1762,9 @@
+ 	/*
+ 	 * Setting uid/gid works only for root.  Irix appears to
+ 	 * send along the gid on create when it tries to implement
+-	 * setgid directories via NFS:
+ 	 */
+-	if (!uid_eq(current_fsuid(), GLOBAL_ROOT_UID))
++	if (!uid_eq(current_fsuid(), GLOBAL_ROOT_UID) ||
++	    READ_ONCE(fev_refuse_owner_change))
+ 		iap->ia_valid &= ~(ATTR_UID|ATTR_GID);
+ 
+ 	/*

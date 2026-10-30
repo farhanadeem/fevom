@@ -1,0 +1,41 @@
+{
+  "method": "stats",
+  "params": {},
+  "result": {
+    "api_version": 1,
+    "build": "be3f324",
+    "state": "running",
+    "at_ns": 2012861000000000,
+    "pauses": 1,
+    "total_offset_ns": 30000250000,
+    "resets": 1,
+    "vcpus": [
+      {
+        "cpu_ns": 2140000000,
+        "exits": 61877
+      }
+    ],
+    "memory": {
+      "guest_bytes": 8589934592,
+      "footprint_bytes": 784334848,
+      "resident_bytes": 702545920,
+      "compressed_bytes": 16384,
+      "released_bytes": 3659530240,
+      "released_ranges": 1745
+    },
+    "windows": {
+      "data_disk": {
+        "state": "on",
+        "size_bytes": 274877906944,
+        "guest_addr": 274877906944,
+        "reads": 1048576,
+        "faults": 3
+      },
+      "file_share": {
+        "state": "off",
+        "reason": "dax=0",
+        "size_bytes": 0
+      }
+    }
+  }
+}

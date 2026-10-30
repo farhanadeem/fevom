@@ -1,0 +1,11 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "id": 6,
+    "method": "machine.import",
+    "state": "cancelled",
+    "phase": "archive",
+    "done_bytes": 104857600
+  }
+}

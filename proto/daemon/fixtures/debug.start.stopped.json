@@ -1,0 +1,22 @@
+{
+  "method": "debug.start",
+  "params": {
+    "target": "db",
+    "kind": "container",
+    "read_only": true,
+    "argv": ["cat", "/etc/my.cnf"],
+    "stdin_tty": true,
+    "rows": 50,
+    "cols": 160
+  },
+  "result": {
+    "id": 25,
+    "token": "1f2e3d4c5b6a79880192a3b4c5d6e7f8",
+    "kind": "stopped",
+    "target_id": "9d8e7f6a5b4c",
+    "name": "db",
+    "image": "mariadb:11",
+    "read_only": true,
+    "notes": ["db is stopped; its root is read-only (--read-only)"]
+  }
+}

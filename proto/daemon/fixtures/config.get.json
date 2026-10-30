@@ -1,0 +1,16 @@
+{
+  "method": "config.get",
+  "params": {
+    "keys": [
+      "memory_mib"
+    ]
+  },
+  "result": {
+    "values": {
+      "memory_mib": {
+        "value": 4096,
+        "pending": true
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "method": "exec.start",
+  "params": {
+    "context": "machine",
+    "machine": "f43",
+    "user": "root",
+    "argv": [],
+    "env": [
+      "TERM=xterm-256color"
+    ],
+    "tty": true,
+    "rows": 40,
+    "cols": 120,
+    "login": true
+  },
+  "result": {
+    "id": 13,
+    "token": "a0b1c2d3e4f5460718293a4b5c6d7e8f"
+  }
+}

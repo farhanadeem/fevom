@@ -1,0 +1,2391 @@
+diff --git a/FEXCore/Source/CMakeLists.txt b/FEXCore/Source/CMakeLists.txt
+--- a/FEXCore/Source/CMakeLists.txt
++++ b/FEXCore/Source/CMakeLists.txt
+@@ -19,6 +19,7 @@
+   Common/JitSymbols.cpp
+   Interface/Context/Context.cpp
+   Interface/Core/LookupCache.cpp
++  Interface/Core/Tier0/Tier0.cpp
+   Interface/Core/DiskCache.cpp
+   Interface/Core/CodeCache.cpp
+   Interface/Core/Core.cpp
+diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interface/Context/Context.h
+--- a/FEXCore/Source/Interface/Context/Context.h
++++ b/FEXCore/Source/Interface/Context/Context.h
+@@ -431,6 +431,7 @@
+   [[nodiscard]]
+   CompileCodeResult CompileCode(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, uint64_t MaxInst = 0);
+   uintptr_t CompileBlock(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst = 0);
++  uintptr_t CompileBlockTiered(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst, bool* Interpreted);
+   uintptr_t CompileSingleStep(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP);
+ 
+   FEXCore::JITSymbols Symbols;
+@@ -439,6 +440,8 @@
+   FEXCore::Utils::PooledAllocatorVirtual FrontendAllocator {"FEXMem_Frontend"};
+   FEXCore::Utils::PooledAllocatorVirtualWithGuard CPUBackendAllocator {"FEXMem_CPUBackend"};
+ 
++  bool Tier0Enabled() const;
++
+   // If Atomic-based TSO emulation is enabled or not.
+   bool IsAtomicTSOEnabled() const {
+     return AtomicTSOEmulationEnabled;
+diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
+--- a/FEXCore/Source/Interface/Core/Core.cpp
++++ b/FEXCore/Source/Interface/Core/Core.cpp
+@@ -14,6 +14,7 @@
+ #endif
+ #include "Interface/Core/ArchHelpers/Arm64Emitter.h"
+ #include "Interface/Core/LookupCache.h"
++#include "Interface/Core/Tier0/Tier0.h"
+ #include "Interface/Core/CPUBackend.h"
+ #include "Interface/Core/CPUID.h"
+ #include "Interface/Core/Frontend.h"
+@@ -854,7 +855,15 @@
+   };
+ }
+ 
++bool ContextImpl::Tier0Enabled() const {
++  return Config.Is64BitMode && Tier0::Threshold() && !IsAtomicTSOEnabled() && !IsVectorAtomicTSOEnabled() && !IsMemcpyAtomicTSOEnabled();
++}
++
+ uintptr_t ContextImpl::CompileBlock(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst) {
++  return CompileBlockTiered(Frame, GuestRIP, MaxInst, nullptr);
++}
++
++uintptr_t ContextImpl::CompileBlockTiered(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst, bool* Interpreted) {
+   if constexpr (BLOCK_DEBUGGING) {
+     // Block debugging logic is hand-written and needs to be handled with care.
+     // Force MaxInst to only be one in this case.
+@@ -867,6 +876,18 @@
+   }
+ 
+   auto Thread = Frame->Thread;
++
++  if (Tier0Enabled() && !Frame->State.flags[X86State::RFLAG_TF_RAW_LOC]) {
++    const auto R = Tier0::Run(this, Thread, GuestRIP);
++    if (R.Interpreted && Interpreted) {
++      *Interpreted = true;
++    }
++    if (R.HostCode) {
++      return R.HostCode;
++    }
++    GuestRIP = R.CompileRIP;
++  }
++
+   FEXCORE_PROFILE_SCOPED("CompileBlock");
+   FEXCORE_PROFILE_ACCUMULATION(Thread, AccumulatedJITTime);
+ 
+@@ -904,6 +925,9 @@
+         for (size_t i = 0; i < Hit->EntryPointRIPs.size(); i++) {
+           void* HostAddr = LoadedCode.BlockBegin + Hit->EntryPointHostOffsets[i];
+           Thread->LookupCache->AddBlockMapping(Thread, Hit->EntryPointRIPs[i], Hit->GuestPages, HostAddr);
++          if (Tier0Enabled()) {
++            Tier0::MarkCompiled(Hit->EntryPointRIPs[i]);
++          }
+           if (Hit->EntryPointRIPs[i] == GuestRIP) {
+             CachedHostCode = reinterpret_cast<uintptr_t>(HostAddr);
+           }
+@@ -1014,8 +1038,12 @@
+   }
+ 
+   // Insert to lookup cache
++  const bool Tier0On = Tier0Enabled();
+   for (auto [GuestAddr, HostAddr] : CompiledCode.EntryPoints) {
+     Thread->LookupCache->AddBlockMapping(Thread, GuestAddr, CodePages, HostAddr);
++    if (Tier0On) {
++      Tier0::MarkCompiled(GuestAddr);
++    }
+   }
+ 
+   // Clear any relocations that might have been generated
+diff --git a/FEXCore/Source/Interface/Core/Frontend.cpp b/FEXCore/Source/Interface/Core/Frontend.cpp
+--- a/FEXCore/Source/Interface/Core/Frontend.cpp
++++ b/FEXCore/Source/Interface/Core/Frontend.cpp
+@@ -7,6 +7,7 @@
+ */
+ 
+ #include "Interface/Context/Context.h"
++#include "Interface/Core/Tier0/Tier0.h"
+ #include "Interface/Core/Frontend.h"
+ #include "Interface/Core/OpcodeDispatcher.h"
+ #include "Interface/Core/X86Tables/X86Tables.h"
+@@ -1141,8 +1142,11 @@
+       return;
+     }
+ 
+-    AddBranchTarget(InstEnd);
+     BlockInfo.EntryPoints.emplace(InstEnd);
++    if (BlockInfo.Is64BitMode && CTX->Tier0Enabled() && Tier0::SeenFilter() && !Tier0::Seen(InstEnd)) {
++      return;
++    }
++    AddBranchTarget(InstEnd);
+     return;
+   }
+ 
+@@ -1172,7 +1176,8 @@
+     TargetRIP &= 0xFFFFFFFFU;
+   }
+ 
+-  if (Conditional) {
++  const bool Tier0Filter = BlockInfo.Is64BitMode && CTX->Tier0Enabled() && Tier0::SeenFilter();
++  if (Conditional && (!Tier0Filter || Tier0::Seen(InstEnd))) {
+     // If we are conditional then a target can be the instruction past the conditional instruction
+     AddBranchTarget(InstEnd);
+   }
+@@ -1186,6 +1191,10 @@
+ #ifdef ARCHITECTURE_arm64ec
+   ValidMultiblockMember = ValidMultiblockMember && !RtlIsEcCode(TargetRIP);
+ #endif
++
++  if (ValidMultiblockMember && Tier0Filter && !Tier0::Seen(TargetRIP)) {
++    ValidMultiblockMember = false;
++  }
+ 
+   if (ValidMultiblockMember) {
+     // Update our conditional branch ranges before we return
+@@ -1727,6 +1736,15 @@
+   }
+ 
+   BlockInfo.TotalInstructionCount = TotalInstructions;
++
++  BlockInfo.Tier0Entries.clear();
++  if (BlockInfo.Is64BitMode && CTX->Tier0Enabled() && Tier0::AllEntries()) {
++    for (auto& Block : BlockInfo.Blocks) {
++      if (BlockInfo.EntryPoints.insert(Block.Entry).second) {
++        BlockInfo.Tier0Entries.insert(Block.Entry);
++      }
++    }
++  }
+ 
+   for (auto& Block : BlockInfo.Blocks) {
+     Block.IsEntryPoint = BlockInfo.EntryPoints.contains(Block.Entry);
+diff --git a/FEXCore/Source/Interface/Core/Frontend.h b/FEXCore/Source/Interface/Core/Frontend.h
+--- a/FEXCore/Source/Interface/Core/Frontend.h
++++ b/FEXCore/Source/Interface/Core/Frontend.h
+@@ -58,6 +58,7 @@
+     fextl::vector<DecodedBlocks> Blocks;
+     fextl::set<uint64_t> EntryPoints;
+     fextl::set<uint64_t> CodePages; // Start addresses of all pages touching the block
++    fextl::set<uint64_t> Tier0Entries;
+   };
+ 
+   Decoder(FEXCore::Core::InternalThreadState* Thread);
+diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+--- a/FEXCore/Source/Interface/Core/JIT/JIT.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+@@ -583,8 +583,9 @@
+     if (!HostCode) {
+       // Hold a reference to the code buffer, to avoid linking unmapped code if compilation triggers a recreation.
+       auto CodeBuffer = static_cast<Arm64JITCore*>(Thread->CPUBackend.get())->CurrentCodeBuffer;
+-      HostCode = static_cast<Context::ContextImpl*>(Thread->CTX)->CompileBlock(Frame, GuestRip, 0);
+-      if (Thread->LookupCache->Shared != CodeBuffer->LookupCache.get()) {
++      bool Interpreted = false;
++      HostCode = static_cast<Context::ContextImpl*>(Thread->CTX)->CompileBlockTiered(Frame, GuestRip, 0, &Interpreted);
++      if (Interpreted || Thread->LookupCache->Shared != CodeBuffer->LookupCache.get()) {
+         return HostCode;
+       }
+     }
+@@ -927,6 +928,7 @@
+   JumpTargets.clear();
+   CallReturnTargets.clear();
+   PendingJumpThunks.clear();
++  Tier0OutOfLineEntries.clear();
+   JumpTargets.resize(IR->GetHeader()->BlockCount, {});
+   Relocations.resize(PrevNumAllocations, FEXCore::CPU::Relocation::Default()); // Discard any relocations generated from a previous attempt
+ 
+@@ -1005,7 +1007,11 @@
+         PendingTargetLabel = nullptr;
+       }
+ 
+-      if (BlockIROp->EntryPoint) {
++      const auto* Tier0Info = ThreadState->FrontendDecoder->GetDecodedBlockInfo();
++      if (BlockIROp->EntryPoint && !Tier0Info->Tier0Entries.empty() && !PendingCallReturnTargetLabel && !CallReturnTargets.contains(Node) &&
++          Tier0Info->Tier0Entries.contains(Entry + BlockIROp->GuestEntryOffset)) {
++        Tier0OutOfLineEntries.push_back({Entry + BlockIROp->GuestEntryOffset, BlockIROp->GuestEntryOffset, Target});
++      } else if (BlockIROp->EntryPoint) {
+         uint64_t BlockStartRIP = Entry + BlockIROp->GuestEntryOffset;
+ 
+         const auto IsReturnTarget = CallReturnTargets.try_emplace(Node).first;
+@@ -1063,6 +1069,14 @@
+   }
+   PendingTargetLabel = nullptr;
+ 
++  for (auto& E : Tier0OutOfLineEntries) {
++    CodeData.EntryPoints.emplace(E.RIP, GetCursorAddress<uint8_t*>());
++    DebugData->GuestOpcodes.push_back({E.GuestEntryOffset, GetCursorAddress<uint8_t*>() - CodeData.BlockBegin});
++    EmitEntryPoint(JITCodeHeaderLabel, CheckTF);
++    b_OrRestart(E.Target);
++  }
++  Tier0OutOfLineEntries.clear();
++
+   ARMEmitter::ForwardLabel l_ExitLink;
+   for (auto& PendingJumpThunk : PendingJumpThunks) {
+     // Align as 64-bit atomics are used on the HostCode field.
+diff --git a/FEXCore/Source/Interface/Core/JIT/JITClass.h b/FEXCore/Source/Interface/Core/JIT/JITClass.h
+--- a/FEXCore/Source/Interface/Core/JIT/JITClass.h
++++ b/FEXCore/Source/Interface/Core/JIT/JITClass.h
+@@ -110,6 +110,12 @@
+     uint8_t PatchSiteSize = 0;
+   };
+   fextl::vector<PendingJumpThunk> PendingJumpThunks;
++  struct Tier0Entry {
++    uint64_t RIP;
++    uint64_t GuestEntryOffset;
++    ARMEmitter::BiDirectionalLabel* Target;
++  };
++  fextl::vector<Tier0Entry> Tier0OutOfLineEntries;
+ 
+   Utils::PoolBufferWithTimedRetirement<uint8_t*, 5000, 500> TempCodeBufferAllocator;
+ 
+diff --git a/FEXCore/Source/Interface/Core/Tier0/Tier0.cpp b/FEXCore/Source/Interface/Core/Tier0/Tier0.cpp
+--- a/FEXCore/Source/Interface/Core/Tier0/Tier0.cpp
++++ b/FEXCore/Source/Interface/Core/Tier0/Tier0.cpp
+@@ -0,0 +1,2033 @@
++// SPDX-License-Identifier: MIT
++#include "Interface/Core/Tier0/Tier0.h"
++#include "Interface/Context/Context.h"
++#include "Interface/Core/LookupCache.h"
++
++#include <FEXCore/Core/CoreState.h>
++#include <FEXCore/Core/X86Enums.h>
++#include <FEXCore/Debug/InternalThreadState.h>
++#include <FEXCore/Utils/LongJump.h>
++#include <FEXCore/Utils/SignalScopeGuards.h>
++#include <FEXCore/Utils/Tier0.h>
++
++#include <atomic>
++#include <bit>
++#include <shared_mutex>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <fcntl.h>
++#include <sys/mman.h>
++#include <unistd.h>
++
++extern "C" {
++extern char __start_fex_tier0[] __attribute__((weak));
++extern char __stop_fex_tier0[] __attribute__((weak));
++}
++
++namespace FEXCore::Tier0 {
++namespace {
++using u8 = uint8_t;
++using u16 = uint16_t;
++using u32 = uint32_t;
++using u64 = uint64_t;
++using s8 = int8_t;
++using s16 = int16_t;
++using s32 = int32_t;
++using s64 = int64_t;
++
++uint32_t ThresholdValue = ~0u;
++uint32_t EntryWeight = 1;
++bool SeenFilterOn = true, AllEntriesOn = true;
++uint32_t OffMask = 0;
++uint32_t SseOffMask = 0;
++enum : uint32_t { OFF_SSE = 1, OFF_STRING = 2, OFF_ATOMIC = 4, OFF_SHIFT = 8, OFF_MULDIV = 16, OFF_BITS = 32, OFF_CMOVSET = 64,
++                  OFF_ADDRSEG = 128, OFF_SHADOW = 256, OFF_CALLRET = 512, OFF_UNARY = 1024, OFF_STACK = 2048 };
++
++struct Stats {
++  std::atomic<u64> Calls {}, Insts {}, Blocks {}, Hot {}, Found {}, Stops {}, Faults {}, Limits {}, Full {};
++  std::atomic<u64> StopOp[512] {};
++};
++Stats* St = nullptr;
++
++void InitOnce() {
++  const char* e = secure_getenv("FEX_TIER0");
++  ThresholdValue = e ? (uint32_t)strtoul(e, nullptr, 10) : 32;
++  const char* w = secure_getenv("FEX_TIER0_ENTRY");
++  EntryWeight = w ? (uint32_t)strtoul(w, nullptr, 10) : 1;
++  if (EntryWeight == 0) {
++    EntryWeight = 1;
++  }
++  if (const char* v = secure_getenv("FEX_TIER0_SEEN")) {
++    SeenFilterOn = *v != '0';
++  }
++  if (const char* v = secure_getenv("FEX_TIER0_ALLENTRIES")) {
++    AllEntriesOn = *v != '0';
++  }
++  if (const char* v = secure_getenv("FEX_TIER0_OFF")) {
++    OffMask = (uint32_t)strtoul(v, nullptr, 0);
++  }
++  if (const char* v = secure_getenv("FEX_TIER0_SSEOFF")) {
++    SseOffMask = (uint32_t)strtoul(v, nullptr, 0);
++  }
++  if (secure_getenv("FEV_TIER0_STATS")) {
++    St = new Stats();
++  }
++}
++
++using Slot = std::atomic<u64>;
++constexpr u64 TableBits = 22, BucketBits = 9;
++constexpr u64 TableSize = 1ull << TableBits;
++Slot* Table = nullptr;
++constexpr u64 COUNT_MASK = 0x7fff, COMPILED_BIT = 0x8000;
++
++enum Step : int { NEXT, BRANCH, STOP };
++
++constexpr u32 F_CF = 1u << 0, F_PF = 1u << 2, F_AF = 1u << 4, F_ZF = 1u << 6, F_SF = 1u << 7, F_OF = 1u << 11;
++enum LazyOp : u8 { L_MAT, L_ADD, L_ADC, L_SUB, L_SBB, L_LOGIC, L_INC, L_DEC };
++struct Lazy {
++  u64 A, B, Res;
++  u8 Op, Size, Cin, Pad;
++  u32 Mat;
++};
++
++struct IState {
++  Lazy F;
++  Lazy FStart;
++  u64 RIPStart;
++  u64 Ran;
++  Core::CPUState* S;
++  u64* R;
++  u64 (*X)[2];
++  u64 CRBase;
++};
++static_assert(sizeof(IState) <= sizeof(((Core::InternalThreadState*)nullptr)->Tier0Scratch));
++
++u32 ReadFlags(const Core::CPUState& S) {
++  u32 nzcv;
++  memcpy(&nzcv, &S.flags[X86State::RFLAG_NZCV_LOC], 4);
++  u32 f = 0;
++  if (nzcv & (1u << 28)) f |= F_OF;
++  if (!(nzcv & (1u << 29))) f |= F_CF;
++  if (nzcv & (1u << 30)) f |= F_ZF;
++  if (nzcv & (1u << 31)) f |= F_SF;
++  const u32 pfb = S.pf_raw & 0xff;
++  if (std::popcount(pfb ^ 1) & 1) f |= F_PF;
++  if ((S.af_raw ^ pfb) & 0x10) f |= F_AF;
++  return f;
++}
++
++void WriteFlags(Core::CPUState& S, u32 f) {
++  u32 nzcv = 0;
++  if (f & F_OF) nzcv |= 1u << 28;
++  if (!(f & F_CF)) nzcv |= 1u << 29;
++  if (f & F_ZF) nzcv |= 1u << 30;
++  if (f & F_SF) nzcv |= 1u << 31;
++  memcpy(&S.flags[X86State::RFLAG_NZCV_LOC], &nzcv, 4);
++  const u32 pfb = (f & F_PF) ? 0 : 1;
++  S.pf_raw = pfb;
++  S.af_raw = pfb ^ ((f & F_AF) ? 0x10 : 0);
++}
++}
++
++#pragma clang section text = "fex_tier0"
++namespace {
++#define AI __attribute__((always_inline)) inline
++#define AI_LAMBDA __attribute__((always_inline))
++
++AI u64 SizeMask(unsigned s) {
++  return s == 8 ? ~0ull : ((1ull << (s * 8)) - 1);
++}
++AI u64 SignBit(unsigned s) {
++  return 1ull << (s * 8 - 1);
++}
++AI u64 SExt(u64 v, unsigned s) {
++  switch (s) {
++  case 1: return (u64)(s64)(s8)v;
++  case 2: return (u64)(s64)(s16)v;
++  case 4: return (u64)(s64)(s32)v;
++  default: return v;
++  }
++}
++AI u32 Parity(u64 r) {
++  return (std::popcount((unsigned)(r & 0xff)) & 1) ? 0 : F_PF;
++}
++AI u32 ZSP(u64 r, unsigned s) {
++  return ((r & SizeMask(s)) == 0 ? F_ZF : 0) | ((r & SignBit(s)) ? F_SF : 0) | Parity(r);
++}
++
++u32 Materialize(const Lazy& L) {
++  const unsigned s = L.Size;
++  const u64 m = SizeMask(s), sb = SignBit(s);
++  const u64 a = L.A & m, b = L.B & m, r = L.Res & m;
++  switch (L.Op) {
++  case L_MAT: return L.Mat;
++  case L_ADD:
++  case L_ADC: {
++    u32 f = ZSP(r, s);
++    if (L.Op == L_ADC && L.Cin ? r <= a : r < a) f |= F_CF;
++    if ((a ^ r) & (b ^ r) & sb) f |= F_OF;
++    if ((a ^ b ^ r) & 0x10) f |= F_AF;
++    return f;
++  }
++  case L_SUB:
++  case L_SBB: {
++    u32 f = ZSP(r, s);
++    if (L.Op == L_SBB && L.Cin ? a <= b : a < b) f |= F_CF;
++    if ((a ^ b) & (a ^ r) & sb) f |= F_OF;
++    if ((a ^ b ^ r) & 0x10) f |= F_AF;
++    return f;
++  }
++  case L_LOGIC: return ZSP(r, s);
++  case L_INC: return (L.Mat & F_CF) | ZSP(r, s) | (r == sb ? F_OF : 0) | (((a ^ r) & 0x10) ? F_AF : 0);
++  case L_DEC: return (L.Mat & F_CF) | ZSP(r, s) | (a == sb ? F_OF : 0) | (((a ^ r) & 0x10) ? F_AF : 0);
++  }
++  return 0;
++}
++
++AI void SetMat(IState& s, u32 f) {
++  s.F.Op = L_MAT;
++  s.F.Mat = f;
++}
++AI void SetLazy(IState& s, LazyOp Op, unsigned Size, u64 A, u64 B, u64 Res) {
++  s.F.Op = Op;
++  s.F.Size = Size;
++  s.F.A = A;
++  s.F.B = B;
++  s.F.Res = Res;
++}
++AI u32 Flags(const IState& s) {
++  return s.F.Op == L_MAT ? s.F.Mat : Materialize(s.F);
++}
++AI u32 CF(const IState& s) {
++  return Flags(s) & F_CF;
++}
++
++AI bool Cond(u32 f, unsigned cc) {
++  bool r;
++  switch (cc >> 1) {
++  case 0: r = f & F_OF; break;
++  case 1: r = f & F_CF; break;
++  case 2: r = f & F_ZF; break;
++  case 3: r = f & (F_CF | F_ZF); break;
++  case 4: r = f & F_SF; break;
++  case 5: r = f & F_PF; break;
++  case 6: r = !!(f & F_SF) != !!(f & F_OF); break;
++  default: r = (f & F_ZF) || (!!(f & F_SF) != !!(f & F_OF)); break;
++  }
++  return (cc & 1) ? !r : r;
++}
++
++template<typename T>
++AI T Ld(u64 a) {
++  T v;
++  __builtin_memcpy(&v, reinterpret_cast<const void*>(a), sizeof(T));
++  return v;
++}
++template<typename T>
++AI void Stv(u64 a, T v) {
++  __builtin_memcpy(reinterpret_cast<void*>(a), &v, sizeof(T));
++}
++AI u64 LdN(u64 a, unsigned s) {
++  switch (s) {
++  case 1: return Ld<u8>(a);
++  case 2: return Ld<u16>(a);
++  case 4: return Ld<u32>(a);
++  default: return Ld<u64>(a);
++  }
++}
++AI void StN(u64 a, unsigned s, u64 v) {
++  switch (s) {
++  case 1: Stv<u8>(a, (u8)v); break;
++  case 2: Stv<u16>(a, (u16)v); break;
++  case 4: Stv<u32>(a, (u32)v); break;
++  default: Stv<u64>(a, v); break;
++  }
++}
++AI bool CasN(u64 a, unsigned s, u64& Old, u64 New) {
++  switch (s) {
++  case 1: {
++    u8 o = (u8)Old;
++    bool ok = __atomic_compare_exchange_n(reinterpret_cast<u8*>(a), &o, (u8)New, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
++    Old = o;
++    return ok;
++  }
++  case 2: {
++    u16 o = (u16)Old;
++    bool ok = __atomic_compare_exchange_n(reinterpret_cast<u16*>(a), &o, (u16)New, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
++    Old = o;
++    return ok;
++  }
++  case 4: {
++    u32 o = (u32)Old;
++    bool ok = __atomic_compare_exchange_n(reinterpret_cast<u32*>(a), &o, (u32)New, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
++    Old = o;
++    return ok;
++  }
++  default: {
++    u64 o = Old;
++    bool ok = __atomic_compare_exchange_n(reinterpret_cast<u64*>(a), &o, New, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
++    Old = o;
++    return ok;
++  }
++  }
++}
++AI u64 XchgN(u64 a, unsigned s, u64 v) {
++  switch (s) {
++  case 1: return __atomic_exchange_n(reinterpret_cast<u8*>(a), (u8)v, __ATOMIC_SEQ_CST);
++  case 2: return __atomic_exchange_n(reinterpret_cast<u16*>(a), (u16)v, __ATOMIC_SEQ_CST);
++  case 4: return __atomic_exchange_n(reinterpret_cast<u32*>(a), (u32)v, __ATOMIC_SEQ_CST);
++  default: return __atomic_exchange_n(reinterpret_cast<u64*>(a), v, __ATOMIC_SEQ_CST);
++  }
++}
++
++struct Dec {
++  const u8* P;
++  u8 Rex;
++  u8 Rep;
++  u8 Seg;
++  bool Addr32;
++  bool Op16;
++  bool Lock;
++  u8 Mod, Reg, RM;
++  bool Mem, RipRel;
++  s64 Disp;
++  u64 EA;
++};
++
++AI unsigned OpSize(const Dec& d) {
++  return (d.Rex & 8) ? 8 : d.Op16 ? 2 : 4;
++}
++
++AI u64 GetReg(const IState& s, unsigned r, unsigned size, u8 rex) {
++  if (size == 1) {
++    if (!rex && r >= 4 && r < 8) {
++      return (s.R[r - 4] >> 8) & 0xff;
++    }
++    return s.R[r] & 0xff;
++  }
++  return s.R[r] & SizeMask(size);
++}
++AI void SetReg(IState& s, unsigned r, unsigned size, u8 rex, u64 v) {
++  switch (size) {
++  case 8: s.R[r] = v; break;
++  case 4: s.R[r] = (u32)v; break;
++  case 2: s.R[r] = (s.R[r] & ~0xffffull) | (v & 0xffff); break;
++  default:
++    if (!rex && r >= 4 && r < 8) {
++      s.R[r - 4] = (s.R[r - 4] & ~0xff00ull) | ((v & 0xff) << 8);
++    } else {
++      s.R[r] = (s.R[r] & ~0xffull) | (v & 0xff);
++    }
++    break;
++  }
++}
++
++AI void ModRM(const IState& s, Dec& d) {
++  const u8 m = *d.P++;
++  d.Mod = m >> 6;
++  d.Reg = ((m >> 3) & 7) | ((d.Rex & 4) << 1);
++  const u8 rm = m & 7;
++  if (d.Mod == 3) {
++    d.Mem = false;
++    d.RM = rm | ((d.Rex & 1) << 3);
++    return;
++  }
++  d.Mem = true;
++  d.RipRel = false;
++  u64 ea = 0;
++  if (rm == 4) {
++    const u8 sib = *d.P++;
++    const unsigned idx = ((sib >> 3) & 7) | ((d.Rex & 2) << 2);
++    if (idx != 4) {
++      ea += s.R[idx] << (sib >> 6);
++    }
++    if ((sib & 7) == 5 && d.Mod == 0) {
++      ea += (u64)(s64)Ld<s32>((u64)d.P);
++      d.P += 4;
++    } else {
++      ea += s.R[(sib & 7) | ((d.Rex & 1) << 3)];
++    }
++  } else if (rm == 5 && d.Mod == 0) {
++    d.RipRel = true;
++    d.Disp = Ld<s32>((u64)d.P);
++    d.P += 4;
++  } else {
++    ea += s.R[rm | ((d.Rex & 1) << 3)];
++  }
++  if (d.Mod == 1) {
++    ea += (u64)(s64)(s8)*d.P++;
++  } else if (d.Mod == 2) {
++    ea += (u64)(s64)Ld<s32>((u64)d.P);
++    d.P += 4;
++  }
++  d.EA = ea;
++}
++AI void FinishEA(const IState& s, Dec& d, bool Seg = true) {
++  if (!d.Mem) {
++    return;
++  }
++  if (d.RipRel) {
++    d.EA = (u64)d.P + d.Disp;
++  }
++  if (d.Addr32) {
++    d.EA = (u32)d.EA;
++  }
++  if (Seg) {
++    if (d.Seg == 0x64) {
++      d.EA += s.S->fs_cached;
++    } else if (d.Seg == 0x65) {
++      d.EA += s.S->gs_cached;
++    }
++  }
++}
++AI u64 GetRM(const IState& s, const Dec& d, unsigned size) {
++  return d.Mem ? LdN(d.EA, size) : GetReg(s, d.RM, size, d.Rex);
++}
++AI void SetRM(IState& s, const Dec& d, unsigned size, u64 v) {
++  if (d.Mem) {
++    StN(d.EA, size, v);
++  } else {
++    SetReg(s, d.RM, size, d.Rex, v);
++  }
++}
++AI u64 Imm(Dec& d, unsigned size) {
++  switch (size) {
++  case 1: {
++    u64 v = (u64)(s64)(s8)*d.P;
++    d.P += 1;
++    return v;
++  }
++  case 2: {
++    u64 v = (u64)(s64)Ld<s16>((u64)d.P);
++    d.P += 2;
++    return v;
++  }
++  default: {
++    u64 v = (u64)(s64)Ld<s32>((u64)d.P);
++    d.P += 4;
++    return v;
++  }
++  }
++}
++
++AI u64 AluCalc(Lazy& F, unsigned op, unsigned size, u64 a, u64 b, u32 cin) {
++  u64 r;
++  LazyOp k;
++  switch (op) {
++  case 0: r = a + b; k = L_ADD; break;
++  case 1: r = a | b; k = L_LOGIC; break;
++  case 2: r = a + b + cin; k = L_ADC; break;
++  case 3: r = a - b - cin; k = L_SBB; break;
++  case 4: r = a & b; k = L_LOGIC; break;
++  case 6: r = a ^ b; k = L_LOGIC; break;
++  default: r = a - b; k = L_SUB; break;
++  }
++  F.Op = k;
++  F.Size = size;
++  F.A = a;
++  F.B = b;
++  F.Res = r;
++  F.Cin = cin;
++  return r;
++}
++AI u64 Alu(IState& s, unsigned op, unsigned size, u64 a, u64 b, u32 cin) {
++  return AluCalc(s.F, op, size, a, b, cin);
++}
++
++AI void AluRM(IState& s, const Dec& d, unsigned op, unsigned size, u64 b) {
++  const u32 cin = (op == 2 || op == 3) ? CF(s) : 0;
++  Lazy F = s.F;
++  if (d.Mem && d.Lock && op != 7) {
++    u64 old = LdN(d.EA, size);
++    for (;;) {
++      const u64 r = AluCalc(F, op, size, old, b, cin);
++      if (CasN(d.EA, size, old, r)) {
++        break;
++      }
++    }
++    s.F = F;
++    return;
++  }
++  const u64 a = GetRM(s, d, size);
++  const u64 r = AluCalc(F, op, size, a, b, cin);
++  if (op != 7) {
++    SetRM(s, d, size, r);
++  }
++  s.F = F;
++}
++
++AI void ShadowCall(IState& s) {
++  constexpr u64 Size = Core::InternalThreadState::CALLRET_STACK_SIZE;
++  u64 sp = s.S->callret_sp - 16;
++  if (sp < s.CRBase + 16 || sp > s.CRBase + Size - 16) {
++    sp = s.CRBase + Size / 2;
++  }
++  Stv<u64>(sp, 0);
++  Stv<u64>(sp + 8, 0);
++  s.S->callret_sp = sp;
++}
++AI void ShadowRet(IState& s) {
++  constexpr u64 Size = Core::InternalThreadState::CALLRET_STACK_SIZE;
++  u64 sp = s.S->callret_sp + 16;
++  if (sp < s.CRBase + 16 || sp > s.CRBase + Size - 16) {
++    sp = s.CRBase + Size / 2;
++  }
++  s.S->callret_sp = sp;
++}
++
++AI void Push(IState& s, u64 v) {
++  const u64 sp = s.R[X86State::REG_RSP] - 8;
++  Stv<u64>(sp, v);
++  s.R[X86State::REG_RSP] = sp;
++}
++
++AI bool Shift(IState& s, const Dec& d, unsigned size, unsigned cnt) {
++  const unsigned bits = size * 8;
++  cnt &= (size == 8) ? 63 : 31;
++  const unsigned op = d.Reg & 7;
++  const u64 a = GetRM(s, d, size) & SizeMask(size);
++  if (cnt == 0) {
++    return true;
++  }
++  if (op == 2 || op == 3) {
++    const u64 m = SizeMask(size), sb = SignBit(size);
++    u32 f = Flags(s);
++    u64 r = a;
++    unsigned c = cnt % (bits + 1);
++    for (unsigned i = 0; i < c; i++) {
++      const u64 cin = (f & F_CF) ? 1 : 0;
++      if (op == 2) {
++        f = (f & ~F_CF) | ((r & sb) ? F_CF : 0);
++        r = ((r << 1) | cin) & m;
++      } else {
++        f = (f & ~F_CF) | ((r & 1) ? F_CF : 0);
++        r = (r >> 1) | (cin ? sb : 0);
++      }
++    }
++    f &= ~F_OF;
++    if (op == 2 ? (!!(r & sb) != !!(f & F_CF)) : (!!(r & sb) != !!(r & (sb >> 1)))) {
++      f |= F_OF;
++    }
++    SetRM(s, d, size, r);
++    SetMat(s, f);
++    return true;
++  }
++  if (cnt >= bits && op != 0 && op != 1) {
++    return false;
++  }
++  const u64 m = SizeMask(size), sb = SignBit(size);
++  u64 r;
++  u32 f = Flags(s);
++  switch (op) {
++  case 0: {
++    const unsigned c = cnt % bits;
++    r = c ? (((a << c) | (a >> (bits - c))) & m) : a;
++    f &= ~(F_CF | F_OF);
++    if (r & 1) f |= F_CF;
++    if (!!(r & sb) != !!(f & F_CF)) f |= F_OF;
++    break;
++  }
++  case 1: {
++    const unsigned c = cnt % bits;
++    r = c ? (((a >> c) | (a << (bits - c))) & m) : a;
++    f &= ~(F_CF | F_OF);
++    if (r & sb) f |= F_CF;
++    if (!!(r & sb) != !!(r & (sb >> 1))) f |= F_OF;
++    break;
++  }
++  case 4:
++  case 6: {
++    r = (a << cnt) & m;
++    const bool c = (a >> (bits - cnt)) & 1;
++    f = ZSP(r, size) | (c ? F_CF : 0);
++    if (!!(r & sb) != c) f |= F_OF;
++    break;
++  }
++  case 5: {
++    r = a >> cnt;
++    f = ZSP(r, size) | (((a >> (cnt - 1)) & 1) ? F_CF : 0) | ((a & sb) ? F_OF : 0);
++    if (cnt != 1) f &= ~F_OF;
++    break;
++  }
++  default: {
++    const s64 sa = (s64)SExt(a, size);
++    r = (u64)(sa >> cnt) & m;
++    f = ZSP(r, size) | (((sa >> (cnt - 1)) & 1) ? F_CF : 0);
++    break;
++  }
++  }
++  SetRM(s, d, size, r);
++  SetMat(s, f);
++  return true;
++}
++
++AI Step String(IState& s, Dec& d, u8 op, u64& rip) {
++  if (OffMask & OFF_STRING) {
++    return STOP;
++  }
++  if (d.Addr32) {
++    return STOP;
++  }
++  const unsigned size = (op & 1) ? OpSize(d) : 1;
++  const s64 step = (s.S->flags[X86State::RFLAG_DF_RAW_LOC] & 0x80) ? -(s64)size : (s64)size;
++  u64* R = s.R;
++  const bool rep = d.Rep != 0;
++  const u64 segbase = d.Seg == 0x64 ? s.S->fs_cached : d.Seg == 0x65 ? s.S->gs_cached : 0;
++  switch (op) {
++  case 0xA4:
++  case 0xA5:
++    if (rep) {
++      while (R[X86State::REG_RCX]) {
++        StN(R[X86State::REG_RDI], size, LdN(R[X86State::REG_RSI] + segbase, size));
++        R[X86State::REG_RSI] += step;
++        R[X86State::REG_RDI] += step;
++        R[X86State::REG_RCX]--;
++      }
++    } else {
++      StN(R[X86State::REG_RDI], size, LdN(R[X86State::REG_RSI] + segbase, size));
++      R[X86State::REG_RSI] += step;
++      R[X86State::REG_RDI] += step;
++    }
++    break;
++  case 0xAA:
++  case 0xAB: {
++    const u64 v = R[X86State::REG_RAX];
++    if (rep) {
++      while (R[X86State::REG_RCX]) {
++        StN(R[X86State::REG_RDI], size, v);
++        R[X86State::REG_RDI] += step;
++        R[X86State::REG_RCX]--;
++      }
++    } else {
++      StN(R[X86State::REG_RDI], size, v);
++      R[X86State::REG_RDI] += step;
++    }
++    break;
++  }
++  case 0xAC:
++  case 0xAD: {
++    if (rep) {
++      return STOP;
++    }
++    const u64 v = LdN(R[X86State::REG_RSI] + segbase, size);
++    SetReg(s, X86State::REG_RAX, size, 1, v);
++    R[X86State::REG_RSI] += step;
++    break;
++  }
++  case 0xA6:
++  case 0xA7:
++  case 0xAE:
++  case 0xAF: {
++    const bool cmps = op < 0xA8;
++    for (;;) {
++      if (rep && !R[X86State::REG_RCX]) {
++        break;
++      }
++      const u64 b = LdN(R[X86State::REG_RDI], size);
++      const u64 a = cmps ? LdN(R[X86State::REG_RSI] + segbase, size) : (R[X86State::REG_RAX] & SizeMask(size));
++      SetLazy(s, L_SUB, size, a, b, a - b);
++      if (cmps) {
++        R[X86State::REG_RSI] += step;
++      }
++      R[X86State::REG_RDI] += step;
++      if (!rep) {
++        break;
++      }
++      R[X86State::REG_RCX]--;
++      const bool zf = ((a - b) & SizeMask(size)) == 0;
++      if (d.Rep == 0xF3 ? !zf : zf) {
++        break;
++      }
++    }
++    break;
++  }
++  default: return STOP;
++  }
++  rip = (u64)d.P;
++  return NEXT;
++}
++
++AI Step TwoByte(IState& s, Dec& d, u64& rip) {
++  const u8 op = *d.P++;
++  u64* R = s.R;
++  if (OffMask) {
++    const bool sse = (op >= 0x10 && op <= 0x17) || op == 0x28 || op == 0x29 || (op >= 0x54 && op <= 0x7F) || op == 0xD4 || op == 0xD6 ||
++                     op == 0xD7 || op == 0xDB || op == 0xDF || op == 0xEB || op == 0xEF || op == 0xFA || op == 0xFB || op == 0xFE;
++    if ((OffMask & OFF_SSE) && sse) {
++      return STOP;
++    }
++    if ((OffMask & OFF_ATOMIC) && (op == 0xB0 || op == 0xB1 || op == 0xC0 || op == 0xC1)) {
++      return STOP;
++    }
++    if ((OffMask & OFF_SHIFT) && (op == 0xA4 || op == 0xA5 || op == 0xAC || op == 0xAD)) {
++      return STOP;
++    }
++    if ((OffMask & OFF_MULDIV) && op == 0xAF) {
++      return STOP;
++    }
++    if ((OffMask & OFF_BITS) && (op == 0xA3 || op == 0xAB || op == 0xB3 || op == 0xBB || op == 0xBA || op == 0xBC || op == 0xBD || op == 0xB8 ||
++                                 (op >= 0xC8 && op <= 0xCF))) {
++      return STOP;
++    }
++    if ((OffMask & OFF_CMOVSET) && ((op >= 0x40 && op <= 0x4F) || (op >= 0x90 && op <= 0x9F))) {
++      return STOP;
++    }
++  }
++  switch (op) {
++  case 0x1E:
++  case 0x1F:
++  case 0x18:
++  case 0x0D:
++    if (op == 0x1E && d.Rep != 0xF3) {
++      return STOP;
++    }
++    ModRM(s, d);
++    rip = (u64)d.P;
++    return NEXT;
++  case 0x40 ... 0x4F: {
++    ModRM(s, d);
++    FinishEA(s, d);
++    const unsigned size = OpSize(d);
++    const u64 v = GetRM(s, d, size);
++    if (Cond(Flags(s), op & 15)) {
++      SetReg(s, d.Reg, size, d.Rex, v);
++    } else if (size == 4) {
++      R[d.Reg] = (u32)R[d.Reg];
++    }
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x80 ... 0x8F: {
++    const u64 disp = Imm(d, 4);
++    const u64 next = (u64)d.P;
++    rip = Cond(Flags(s), op & 15) ? next + disp : next;
++    return BRANCH;
++  }
++  case 0x90 ... 0x9F: {
++    ModRM(s, d);
++    FinishEA(s, d);
++    SetRM(s, d, 1, Cond(Flags(s), op & 15) ? 1 : 0);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xA3:
++  case 0xAB:
++  case 0xB3:
++  case 0xBB:
++  case 0xBA: {
++    ModRM(s, d);
++    const unsigned size = OpSize(d);
++    unsigned kind, bit;
++    if (op == 0xBA) {
++      kind = d.Reg & 7;
++      if (kind < 4) {
++        return STOP;
++      }
++      kind -= 4;
++      bit = *d.P++;
++    } else {
++      if (d.Mem) {
++        return STOP;
++      }
++      kind = op == 0xA3 ? 0 : op == 0xAB ? 1 : op == 0xB3 ? 2 : 3;
++      bit = (unsigned)R[d.Reg];
++    }
++    if (d.Lock && d.Mem) {
++      return STOP;
++    }
++    FinishEA(s, d);
++    bit &= size * 8 - 1;
++    const u64 v = GetRM(s, d, size);
++    u32 f = Flags(s) & ~F_CF;
++    if ((v >> bit) & 1) f |= F_CF;
++    if (kind != 0) {
++      const u64 mask = 1ull << bit;
++      SetRM(s, d, size, kind == 1 ? v | mask : kind == 2 ? v & ~mask : v ^ mask);
++    }
++    SetMat(s, f);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xAF: {
++    ModRM(s, d);
++    FinishEA(s, d);
++    const unsigned size = OpSize(d);
++    const s64 a = (s64)SExt(GetReg(s, d.Reg, size, d.Rex), size), b = (s64)SExt(GetRM(s, d, size), size);
++    const __int128 p = (__int128)a * b;
++    const u64 r = (u64)p;
++    const bool ovf = (__int128)(s64)SExt(r & SizeMask(size), size) != p;
++    SetReg(s, d.Reg, size, d.Rex, r);
++    SetMat(s, ZSP(r, size) | (ovf ? (F_CF | F_OF) : 0));
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xB0:
++  case 0xB1: {
++    ModRM(s, d);
++    FinishEA(s, d);
++    const unsigned size = op == 0xB0 ? 1 : OpSize(d);
++    const u64 acc = GetReg(s, X86State::REG_RAX, size, d.Rex);
++    const u64 src = GetReg(s, d.Reg, size, d.Rex);
++    u64 cur;
++    bool eq;
++    if (d.Mem) {
++      cur = acc;
++      eq = CasN(d.EA, size, cur, src);
++    } else {
++      cur = GetReg(s, d.RM, size, d.Rex);
++      eq = cur == acc;
++      if (eq) {
++        SetReg(s, d.RM, size, d.Rex, src);
++      }
++    }
++    SetLazy(s, L_SUB, size, acc, cur, acc - cur);
++    if (!eq) {
++      SetReg(s, X86State::REG_RAX, size, d.Rex, cur);
++    }
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xB6:
++  case 0xB7:
++  case 0xBE:
++  case 0xBF: {
++    ModRM(s, d);
++    FinishEA(s, d);
++    const unsigned from = (op & 1) ? 2 : 1;
++    u64 v = GetRM(s, d, from);
++    if (op >= 0xBE) {
++      v = SExt(v, from);
++    }
++    SetReg(s, d.Reg, OpSize(d), d.Rex, v);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xBC:
++  case 0xBD: {
++    ModRM(s, d);
++    FinishEA(s, d);
++    const unsigned size = OpSize(d);
++    const u64 v = GetRM(s, d, size) & SizeMask(size);
++    const unsigned bits = size * 8;
++    if (d.Rep == 0xF3) {
++      u64 r;
++      if (op == 0xBC) {
++        r = v ? (u64)std::countr_zero(v) : bits;
++      } else {
++        r = v ? (u64)(std::countl_zero(v) - (64 - bits)) : bits;
++      }
++      SetReg(s, d.Reg, size, d.Rex, r);
++      SetMat(s, (v == 0 ? F_CF : 0) | (r == 0 ? F_ZF : 0));
++    } else {
++      if (v == 0) {
++        SetMat(s, (Flags(s) & ~F_ZF) | F_ZF);
++      } else {
++        SetReg(s, d.Reg, size, d.Rex, op == 0xBC ? (u64)std::countr_zero(v) : (u64)(63 - std::countl_zero(v)));
++        SetMat(s, Flags(s) & ~F_ZF);
++      }
++    }
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xC0:
++  case 0xC1: {
++    ModRM(s, d);
++    FinishEA(s, d);
++    const unsigned size = op == 0xC0 ? 1 : OpSize(d);
++    const u64 src = GetReg(s, d.Reg, size, d.Rex);
++    u64 old;
++    if (d.Mem) {
++      old = LdN(d.EA, size);
++      while (!CasN(d.EA, size, old, old + src)) {
++      }
++    } else {
++      old = GetReg(s, d.RM, size, d.Rex);
++      SetReg(s, d.RM, size, d.Rex, old + src);
++    }
++    SetLazy(s, L_ADD, size, old, src, old + src);
++    SetReg(s, d.Reg, size, d.Rex, old);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x10:
++  case 0x11:
++  case 0x28:
++  case 0x29:
++  case 0x6F:
++  case 0x7F:
++  case 0x6E:
++  case 0x7E:
++  case 0xD6:
++  case 0x54:
++  case 0x55:
++  case 0x56:
++  case 0x57:
++  case 0xDB:
++  case 0xDF:
++  case 0xEB:
++  case 0xEF:
++  case 0x74:
++  case 0x75:
++  case 0x76:
++  case 0x60:
++  case 0x61:
++  case 0x62:
++  case 0x68:
++  case 0x69:
++  case 0x6A:
++  case 0x6C:
++  case 0x6D:
++  case 0x70:
++  case 0x12:
++  case 0x13:
++  case 0x16:
++  case 0x17:
++  case 0xD4:
++  case 0xFB:
++  case 0xFE:
++  case 0xFA:
++  case 0x73:
++  case 0xD7: {
++    if (!s.X) {
++      return STOP;
++    }
++    const bool p66 = d.Op16, pF3 = d.Rep == 0xF3, pF2 = d.Rep == 0xF2;
++    if (SseOffMask) {
++      unsigned g;
++      switch (op) {
++      case 0x10: case 0x11: g = (pF3 || pF2) ? 12 : (op == 0x10 ? 0 : 13); break;
++      case 0x28: case 0x29: g = 1; break;
++      case 0x6F: case 0x7F: g = 2; break;
++      case 0x6E: case 0x7E: case 0xD6: g = 3; break;
++      case 0x54: case 0x55: case 0x56: case 0x57: case 0xDB: case 0xDF: case 0xEB: case 0xEF: g = 4; break;
++      case 0x74: case 0x75: case 0x76: g = 5; break;
++      case 0xD7: g = 6; break;
++      case 0x60: case 0x61: case 0x62: case 0x68: case 0x69: case 0x6A: case 0x6C: case 0x6D: g = 7; break;
++      case 0x70: g = 8; break;
++      case 0x12: case 0x13: case 0x16: case 0x17: g = 9; break;
++      case 0xD4: case 0xFB: case 0xFE: case 0xFA: g = 10; break;
++      default: g = 11; break;
++      }
++      if (SseOffMask & (1u << g)) {
++        return STOP;
++      }
++    }
++    ModRM(s, d);
++    FinishEA(s, d);
++    u64(*X)[2] = s.X;
++    const unsigned xr = d.Reg;
++    auto LdX = [&](u64* v) AI_LAMBDA {
++      if (d.Mem) {
++        v[0] = Ld<u64>(d.EA);
++        v[1] = Ld<u64>(d.EA + 8);
++      } else {
++        v[0] = X[d.RM][0];
++        v[1] = X[d.RM][1];
++      }
++    };
++    u64 v[2];
++    switch (op) {
++    case 0x10:
++    case 0x11: {
++      if (pF3 || pF2) {
++        const unsigned sz = pF3 ? 4 : 8;
++        if (op == 0x10) {
++          if (d.Mem) {
++            X[xr][0] = sz == 4 ? Ld<u32>(d.EA) : Ld<u64>(d.EA);
++            X[xr][1] = 0;
++          } else if (sz == 4) {
++            X[xr][0] = (X[xr][0] & ~0xffffffffull) | (X[d.RM][0] & 0xffffffffull);
++          } else {
++            X[xr][0] = X[d.RM][0];
++          }
++        } else {
++          if (d.Mem) {
++            if (sz == 4) {
++              Stv<u32>(d.EA, (u32)X[xr][0]);
++            } else {
++              Stv<u64>(d.EA, X[xr][0]);
++            }
++          } else if (sz == 4) {
++            X[d.RM][0] = (X[d.RM][0] & ~0xffffffffull) | (X[xr][0] & 0xffffffffull);
++          } else {
++            X[d.RM][0] = X[xr][0];
++          }
++        }
++        break;
++      }
++      [[fallthrough]];
++    }
++    case 0x28:
++    case 0x29:
++    case 0x6F:
++    case 0x7F: {
++      if ((op == 0x6F || op == 0x7F) && !p66 && !pF3) {
++        return STOP;
++      }
++      if ((op == 0x28 || op == 0x29) && (pF2 || pF3)) {
++        return STOP;
++      }
++      const bool aligned = op == 0x28 || op == 0x29 || ((op == 0x6F || op == 0x7F) && p66);
++      if (aligned && d.Mem && (d.EA & 15)) {
++        return STOP;
++      }
++      const bool store = op == 0x11 || op == 0x29 || op == 0x7F;
++      if (store) {
++        if (d.Mem) {
++          Stv<u64>(d.EA, X[xr][0]);
++          Stv<u64>(d.EA + 8, X[xr][1]);
++        } else {
++          X[d.RM][0] = X[xr][0];
++          X[d.RM][1] = X[xr][1];
++        }
++      } else {
++        LdX(v);
++        X[xr][0] = v[0];
++        X[xr][1] = v[1];
++      }
++      break;
++    }
++    case 0x6E: {
++      if (!p66) {
++        return STOP;
++      }
++      const u64 g = GetRM(s, d, (d.Rex & 8) ? 8 : 4);
++      X[xr][0] = g;
++      X[xr][1] = 0;
++      break;
++    }
++    case 0x7E: {
++      if (pF3) {
++        X[xr][0] = d.Mem ? Ld<u64>(d.EA) : X[d.RM][0];
++        X[xr][1] = 0;
++      } else if (p66) {
++        const unsigned sz = (d.Rex & 8) ? 8 : 4;
++        if (d.Mem) {
++          StN(d.EA, sz, X[xr][0]);
++        } else {
++          s.R[d.RM] = sz == 8 ? X[xr][0] : (u32)X[xr][0];
++        }
++      } else {
++        return STOP;
++      }
++      break;
++    }
++    case 0xD6: {
++      if (!p66) {
++        return STOP;
++      }
++      if (d.Mem) {
++        Stv<u64>(d.EA, X[xr][0]);
++      } else {
++        X[d.RM][0] = X[xr][0];
++        X[d.RM][1] = 0;
++      }
++      break;
++    }
++    case 0x54:
++    case 0x55:
++    case 0x56:
++    case 0x57:
++    case 0xDB:
++    case 0xDF:
++    case 0xEB:
++    case 0xEF: {
++      if (pF2 || pF3 || (op >= 0xDB && !p66)) {
++        return STOP;
++      }
++      if (p66 && op >= 0xDB && d.Mem && (d.EA & 15)) {
++        return STOP;
++      }
++      if (op < 0x58 && d.Mem && (d.EA & 15)) {
++        return STOP;
++      }
++      LdX(v);
++      for (int i = 0; i < 2; i++) {
++        const u64 a = X[xr][i];
++        X[xr][i] = (op == 0x54 || op == 0xDB) ? a & v[i] : (op == 0x55 || op == 0xDF) ? ~a & v[i] : (op == 0x56 || op == 0xEB) ? a | v[i] : a ^ v[i];
++      }
++      break;
++    }
++    case 0x74:
++    case 0x75:
++    case 0x76: {
++      if (!p66) {
++        return STOP;
++      }
++      if (d.Mem && (d.EA & 15)) {
++        return STOP;
++      }
++      LdX(v);
++      const unsigned w = op == 0x74 ? 8 : op == 0x75 ? 16 : 32;
++      const u64 lm = w == 32 ? 0xffffffffull : (1ull << w) - 1;
++      for (int i = 0; i < 2; i++) {
++        u64 r = 0;
++        for (unsigned b = 0; b < 64; b += w) {
++          if (((X[xr][i] >> b) & lm) == ((v[i] >> b) & lm)) {
++            r |= lm << b;
++          }
++        }
++        X[xr][i] = r;
++      }
++      break;
++    }
++    case 0x60:
++    case 0x61:
++    case 0x62:
++    case 0x68:
++    case 0x69:
++    case 0x6A:
++    case 0x6C:
++    case 0x6D: {
++      if (!p66 || (d.Mem && (d.EA & 15))) {
++        return STOP;
++      }
++      LdX(v);
++      u8 a[16], b[16], r[16];
++      memcpy(a, X[xr], 16);
++      memcpy(b, v, 16);
++      const unsigned w = (op == 0x60 || op == 0x68) ? 1 : (op == 0x61 || op == 0x69) ? 2 : (op == 0x62 || op == 0x6A) ? 4 : 8;
++      const unsigned base = (op >= 0x68 && op != 0x6C) ? 8 : 0;
++      for (unsigned i = 0; i < 8 / w; i++) {
++        memcpy(r + 2 * i * w, a + base + i * w, w);
++        memcpy(r + (2 * i + 1) * w, b + base + i * w, w);
++      }
++      memcpy(X[xr], r, 16);
++      break;
++    }
++    case 0x70: {
++      if (!p66 || (d.Mem && (d.EA & 15))) {
++        return STOP;
++      }
++      const u8 imm = *d.P++;
++      if (d.RipRel) {
++        d.EA += 1;
++      }
++      LdX(v);
++      u32 src[4], r[4];
++      memcpy(src, v, 16);
++      for (int i = 0; i < 4; i++) {
++        r[i] = src[(imm >> (2 * i)) & 3];
++      }
++      memcpy(X[xr], r, 16);
++      break;
++    }
++    case 0x12:
++    case 0x13:
++    case 0x16:
++    case 0x17: {
++      if (!d.Mem || pF2 || pF3) {
++        return STOP;
++      }
++      const unsigned half = (op >= 0x16) ? 1 : 0;
++      if (op & 1) {
++        Stv<u64>(d.EA, X[xr][half]);
++      } else {
++        X[xr][half] = Ld<u64>(d.EA);
++      }
++      break;
++    }
++    case 0xD4:
++    case 0xFB:
++    case 0xFE:
++    case 0xFA: {
++      if (!p66 || (d.Mem && (d.EA & 15))) {
++        return STOP;
++      }
++      LdX(v);
++      if (op == 0xD4 || op == 0xFB) {
++        for (int i = 0; i < 2; i++) {
++          X[xr][i] = op == 0xD4 ? X[xr][i] + v[i] : X[xr][i] - v[i];
++        }
++      } else {
++        u32 a[4], b[4];
++        memcpy(a, X[xr], 16);
++        memcpy(b, v, 16);
++        for (int i = 0; i < 4; i++) {
++          a[i] = op == 0xFE ? a[i] + b[i] : a[i] - b[i];
++        }
++        memcpy(X[xr], a, 16);
++      }
++      break;
++    }
++    case 0x73: {
++      if (!p66 || d.Mem) {
++        return STOP;
++      }
++      const unsigned k = d.Reg & 7, imm = *d.P++;
++      u64* x = X[d.RM];
++      if (k == 2 || k == 6) {
++        for (int i = 0; i < 2; i++) {
++          x[i] = imm > 63 ? 0 : k == 2 ? x[i] >> imm : x[i] << imm;
++        }
++      } else if (k == 3 || k == 7) {
++        u8 b[16], r[16] {};
++        memcpy(b, x, 16);
++        const unsigned n = imm > 16 ? 16 : imm;
++        if (k == 3) {
++          memcpy(r, b + n, 16 - n);
++        } else {
++          memcpy(r + n, b, 16 - n);
++        }
++        memcpy(x, r, 16);
++      } else {
++        return STOP;
++      }
++      break;
++    }
++    case 0xD7: {
++      if (!p66 || d.Mem) {
++        return STOP;
++      }
++      u64 m = 0;
++      for (int i = 0; i < 2; i++) {
++        for (int b = 0; b < 8; b++) {
++          m |= ((X[d.RM][i] >> (b * 8 + 7)) & 1) << (i * 8 + b);
++        }
++      }
++      s.R[d.Reg] = m;
++      break;
++    }
++    default: return STOP;
++    }
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xA4:
++  case 0xA5:
++  case 0xAC:
++  case 0xAD: {
++    ModRM(s, d);
++    const unsigned size = OpSize(d);
++    unsigned cnt = (op & 1) ? (unsigned)R[X86State::REG_RCX] : *d.P++;
++    FinishEA(s, d);
++    cnt &= size == 8 ? 63 : 31;
++    const unsigned bits = size * 8;
++    if (cnt == 0) {
++      rip = (u64)d.P;
++      return NEXT;
++    }
++    if (cnt >= bits || d.Lock) {
++      return STOP;
++    }
++    const u64 m = SizeMask(size);
++    const u64 a = GetRM(s, d, size) & m, b = GetReg(s, d.Reg, size, d.Rex) & m;
++    u64 r;
++    bool c;
++    if (op <= 0xA5) {
++      r = ((a << cnt) | (b >> (bits - cnt))) & m;
++      c = (a >> (bits - cnt)) & 1;
++    } else {
++      r = ((a >> cnt) | (b << (bits - cnt))) & m;
++      c = (a >> (cnt - 1)) & 1;
++    }
++    SetRM(s, d, size, r);
++    u32 f = ZSP(r, size) | (c ? F_CF : 0);
++    if (!!(r & SignBit(size)) != !!(a & SignBit(size))) {
++      f |= F_OF;
++    }
++    SetMat(s, f);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xB8: {
++    if (d.Rep != 0xF3) {
++      return STOP;
++    }
++    ModRM(s, d);
++    FinishEA(s, d);
++    const unsigned size = OpSize(d);
++    const u64 v = GetRM(s, d, size) & SizeMask(size);
++    SetReg(s, d.Reg, size, d.Rex, (u64)std::popcount(v));
++    SetMat(s, v == 0 ? F_ZF : 0);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xC8 ... 0xCF: {
++    const unsigned r = (op & 7) | ((d.Rex & 1) << 3);
++    if (d.Rex & 8) {
++      R[r] = __builtin_bswap64(R[r]);
++    } else {
++      R[r] = __builtin_bswap32((u32)R[r]);
++    }
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  default: return STOP;
++  }
++}
++
++Step One(IState& s, u64& rip) {
++  Dec d;
++  d.P = reinterpret_cast<const u8*>(rip);
++  d.Rex = 0;
++  d.Rep = 0;
++  d.Seg = 0;
++  d.Op16 = false;
++  d.Lock = false;
++  d.Addr32 = false;
++  u64* R = s.R;
++  u8 op;
++  for (;;) {
++    op = *d.P++;
++    switch (op) {
++    case 0x66: d.Op16 = true; d.Rex = 0; continue;
++    case 0xF0: d.Lock = true; d.Rex = 0; continue;
++    case 0xF2:
++    case 0xF3: d.Rep = op; d.Rex = 0; continue;
++    case 0x2E:
++    case 0x3E:
++    case 0x26:
++    case 0x36: d.Rex = 0; continue;
++    case 0x64:
++    case 0x65: d.Seg = op; d.Rex = 0; continue;
++    case 0x67: d.Addr32 = true; d.Rex = 0; continue;
++    case 0x40 ... 0x4F: d.Rex = op; continue;
++    default: break;
++    }
++    break;
++  }
++
++  if (OffMask) {
++    if ((OffMask & OFF_ADDRSEG) && (d.Addr32 || d.Seg)) {
++      return STOP;
++    }
++    if ((OffMask & OFF_ATOMIC) && (d.Lock || op == 0x86 || op == 0x87)) {
++      return STOP;
++    }
++    if ((OffMask & OFF_SHIFT) && (op == 0xC0 || op == 0xC1 || (op >= 0xD0 && op <= 0xD3))) {
++      return STOP;
++    }
++    if ((OffMask & OFF_MULDIV) && (op == 0x69 || op == 0x6B)) {
++      return STOP;
++    }
++    if ((OffMask & OFF_CALLRET) && (op == 0xE8 || op == 0xC2 || op == 0xC3 || op == 0xFF)) {
++      return STOP;
++    }
++    if ((OffMask & OFF_UNARY) && (op == 0xFE || op == 0xFF || op == 0xF6 || op == 0xF7)) {
++      return STOP;
++    }
++    if ((OffMask & OFF_STACK) && ((op >= 0x50 && op <= 0x5F) || op == 0x68 || op == 0x6A || op == 0x8F || op == 0xC9)) {
++      return STOP;
++    }
++    if ((OffMask & OFF_MULDIV) && (op == 0xF6 || op == 0xF7)) {
++      return STOP;
++    }
++  }
++  switch (op) {
++  case 0x00 ... 0x05:
++  case 0x08 ... 0x0D:
++  case 0x10 ... 0x15:
++  case 0x18 ... 0x1D:
++  case 0x20 ... 0x25:
++  case 0x28 ... 0x2D:
++  case 0x30 ... 0x35:
++  case 0x38 ... 0x3D: {
++    const unsigned aop = op >> 3, form = op & 7;
++    if (form < 4) {
++      ModRM(s, d);
++      FinishEA(s, d);
++      const unsigned size = (form & 1) ? OpSize(d) : 1;
++      if (form < 2) {
++        AluRM(s, d, aop, size, GetReg(s, d.Reg, size, d.Rex));
++      } else {
++        if (d.Lock) {
++          return STOP;
++        }
++        const u32 cin = (aop == 2 || aop == 3) ? CF(s) : 0;
++        const u64 r = Alu(s, aop, size, GetReg(s, d.Reg, size, d.Rex), GetRM(s, d, size), cin);
++        if (aop != 7) {
++          SetReg(s, d.Reg, size, d.Rex, r);
++        }
++      }
++    } else {
++      const unsigned size = form == 4 ? 1 : OpSize(d);
++      const u64 b = Imm(d, size == 8 ? 4 : size);
++      const u32 cin = (aop == 2 || aop == 3) ? CF(s) : 0;
++      const u64 r = Alu(s, aop, size, GetReg(s, X86State::REG_RAX, size, d.Rex), b, cin);
++      if (aop != 7) {
++        SetReg(s, X86State::REG_RAX, size, d.Rex, r);
++      }
++    }
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x0F: return TwoByte(s, d, rip);
++  case 0x50 ... 0x57: {
++    if (d.Op16) {
++      return STOP;
++    }
++    Push(s, R[(op & 7) | ((d.Rex & 1) << 3)]);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x58 ... 0x5F: {
++    if (d.Op16) {
++      return STOP;
++    }
++    const u64 v = Ld<u64>(R[X86State::REG_RSP]);
++    R[X86State::REG_RSP] += 8;
++    R[(op & 7) | ((d.Rex & 1) << 3)] = v;
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x63: {
++    ModRM(s, d);
++    FinishEA(s, d);
++    const u64 v = GetRM(s, d, 4);
++    SetReg(s, d.Reg, OpSize(d), d.Rex, (d.Rex & 8) ? SExt(v, 4) : v);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x68:
++  case 0x6A: {
++    if (d.Op16) {
++      return STOP;
++    }
++    const u64 v = Imm(d, op == 0x6A ? 1 : 4);
++    Push(s, v);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x69:
++  case 0x6B: {
++    ModRM(s, d);
++    const unsigned size = OpSize(d);
++    const u64 imm = Imm(d, op == 0x6B ? 1 : (size == 2 ? 2 : 4));
++    FinishEA(s, d);
++    const s64 a = (s64)SExt(GetRM(s, d, size), size), b = (s64)SExt(imm & SizeMask(size), size);
++    const __int128 p = (__int128)a * b;
++    const u64 r = (u64)p;
++    const bool ovf = (__int128)(s64)SExt(r & SizeMask(size), size) != p;
++    SetReg(s, d.Reg, size, d.Rex, r);
++    SetMat(s, ZSP(r, size) | (ovf ? (F_CF | F_OF) : 0));
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x70 ... 0x7F: {
++    const u64 disp = Imm(d, 1);
++    const u64 next = (u64)d.P;
++    rip = Cond(Flags(s), op & 15) ? next + disp : next;
++    return BRANCH;
++  }
++  case 0x80:
++  case 0x81:
++  case 0x83: {
++    ModRM(s, d);
++    const unsigned size = op == 0x80 ? 1 : OpSize(d);
++    const u64 b = Imm(d, op == 0x81 ? (size == 2 ? 2 : 4) : 1);
++    FinishEA(s, d);
++    AluRM(s, d, d.Reg & 7, size, b);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x84:
++  case 0x85: {
++    ModRM(s, d);
++    FinishEA(s, d);
++    const unsigned size = op == 0x84 ? 1 : OpSize(d);
++    const u64 a = GetRM(s, d, size), b = GetReg(s, d.Reg, size, d.Rex);
++    SetLazy(s, L_LOGIC, size, a, b, a & b);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x86:
++  case 0x87: {
++    ModRM(s, d);
++    FinishEA(s, d);
++    const unsigned size = op == 0x86 ? 1 : OpSize(d);
++    const u64 r = GetReg(s, d.Reg, size, d.Rex);
++    u64 old;
++    if (d.Mem) {
++      old = XchgN(d.EA, size, r);
++    } else {
++      old = GetReg(s, d.RM, size, d.Rex);
++      SetReg(s, d.RM, size, d.Rex, r);
++    }
++    SetReg(s, d.Reg, size, d.Rex, old);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x88:
++  case 0x89:
++  case 0x8A:
++  case 0x8B: {
++    ModRM(s, d);
++    FinishEA(s, d);
++    const unsigned size = (op & 1) ? OpSize(d) : 1;
++    if (op < 0x8A) {
++      SetRM(s, d, size, GetReg(s, d.Reg, size, d.Rex));
++    } else {
++      SetReg(s, d.Reg, size, d.Rex, GetRM(s, d, size));
++    }
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x8D: {
++    ModRM(s, d);
++    if (!d.Mem) {
++      return STOP;
++    }
++    FinishEA(s, d, false);
++    SetReg(s, d.Reg, OpSize(d), d.Rex, d.EA);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x8F: {
++    ModRM(s, d);
++    if ((d.Reg & 7) != 0 || d.Op16) {
++      return STOP;
++    }
++    FinishEA(s, d);
++    const u64 v = Ld<u64>(R[X86State::REG_RSP]);
++    if (d.Mem) {
++      return STOP;
++    }
++    R[X86State::REG_RSP] += 8;
++    SetReg(s, d.RM, 8, d.Rex, v);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x90 ... 0x97: {
++    const unsigned r = (op & 7) | ((d.Rex & 1) << 3);
++    if (r != 0) {
++      const unsigned size = OpSize(d);
++      const u64 a = GetReg(s, 0, size, d.Rex), b = GetReg(s, r, size, d.Rex);
++      SetReg(s, 0, size, d.Rex, b);
++      SetReg(s, r, size, d.Rex, a);
++    }
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x98: {
++    const unsigned size = OpSize(d);
++    SetReg(s, 0, size, d.Rex, SExt(R[0], size / 2));
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0x99: {
++    const unsigned size = OpSize(d);
++    SetReg(s, X86State::REG_RDX, size, d.Rex, (R[0] & SignBit(size)) ? ~0ull : 0);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xA4 ... 0xA7:
++  case 0xAA ... 0xAF: return String(s, d, op, rip);
++  case 0xA8:
++  case 0xA9: {
++    const unsigned size = op == 0xA8 ? 1 : OpSize(d);
++    const u64 b = Imm(d, size == 8 ? 4 : size);
++    const u64 a = GetReg(s, 0, size, d.Rex);
++    SetLazy(s, L_LOGIC, size, a, b, a & b);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xB0 ... 0xB7: {
++    const u64 v = *d.P++;
++    SetReg(s, (op & 7) | ((d.Rex & 1) << 3), 1, d.Rex, v);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xB8 ... 0xBF: {
++    const unsigned r = (op & 7) | ((d.Rex & 1) << 3);
++    if (d.Rex & 8) {
++      R[r] = Ld<u64>((u64)d.P);
++      d.P += 8;
++    } else {
++      const unsigned size = OpSize(d);
++      SetReg(s, r, size, d.Rex, Imm(d, size));
++    }
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xC0:
++  case 0xC1:
++  case 0xD0:
++  case 0xD1:
++  case 0xD2:
++  case 0xD3: {
++    ModRM(s, d);
++    const unsigned size = (op & 1) ? OpSize(d) : 1;
++    unsigned cnt;
++    if (op <= 0xC1) {
++      cnt = *d.P++;
++    } else if (op <= 0xD1) {
++      cnt = 1;
++    } else {
++      cnt = (unsigned)R[X86State::REG_RCX];
++    }
++    FinishEA(s, d);
++    if (d.Lock || !Shift(s, d, size, cnt)) {
++      return STOP;
++    }
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xC2:
++  case 0xC3: {
++    if (d.Op16) {
++      return STOP;
++    }
++    const u64 t = Ld<u64>(R[X86State::REG_RSP]);
++    u64 extra = 0;
++    if (op == 0xC2) {
++      extra = Ld<u16>((u64)d.P);
++      d.P += 2;
++    }
++    R[X86State::REG_RSP] += 8 + extra;
++    if (s.CRBase && !(OffMask & OFF_SHADOW)) {
++      ShadowRet(s);
++    }
++    rip = t;
++    return BRANCH;
++  }
++  case 0xC6:
++  case 0xC7: {
++    ModRM(s, d);
++    if ((d.Reg & 7) != 0) {
++      return STOP;
++    }
++    const unsigned size = op == 0xC6 ? 1 : OpSize(d);
++    const u64 v = Imm(d, size == 8 ? 4 : size);
++    FinishEA(s, d);
++    SetRM(s, d, size, v);
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xC9: {
++    const u64 v = Ld<u64>(R[X86State::REG_RBP]);
++    R[X86State::REG_RSP] = R[X86State::REG_RBP] + 8;
++    R[X86State::REG_RBP] = v;
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xE8: {
++    const u64 disp = Imm(d, 4);
++    const u64 next = (u64)d.P;
++    Push(s, next);
++    if (s.CRBase && !(OffMask & OFF_SHADOW)) {
++      ShadowCall(s);
++    }
++    rip = next + disp;
++    return BRANCH;
++  }
++  case 0xE9: {
++    const u64 disp = Imm(d, 4);
++    rip = (u64)d.P + disp;
++    return BRANCH;
++  }
++  case 0xEB: {
++    const u64 disp = Imm(d, 1);
++    rip = (u64)d.P + disp;
++    return BRANCH;
++  }
++  case 0xF5: SetMat(s, Flags(s) ^ F_CF); rip = (u64)d.P; return NEXT;
++  case 0xF8: SetMat(s, Flags(s) & ~F_CF); rip = (u64)d.P; return NEXT;
++  case 0xF9: SetMat(s, Flags(s) | F_CF); rip = (u64)d.P; return NEXT;
++  case 0xFC: s.S->flags[X86State::RFLAG_DF_RAW_LOC] = 1; rip = (u64)d.P; return NEXT;
++  case 0xFD: s.S->flags[X86State::RFLAG_DF_RAW_LOC] = 0xff; rip = (u64)d.P; return NEXT;
++  case 0xF6:
++  case 0xF7: {
++    ModRM(s, d);
++    const unsigned size = op == 0xF6 ? 1 : OpSize(d);
++    const unsigned k = d.Reg & 7;
++    if (k == 0 || k == 1) {
++      const u64 b = Imm(d, size == 8 ? 4 : size);
++      FinishEA(s, d);
++      const u64 a = GetRM(s, d, size);
++      SetLazy(s, L_LOGIC, size, a, b, a & b);
++      rip = (u64)d.P;
++      return NEXT;
++    }
++    FinishEA(s, d);
++    if (d.Lock) {
++      return STOP;
++    }
++    const u64 m = SizeMask(size);
++    const u64 v = GetRM(s, d, size) & m;
++    switch (k) {
++    case 2: SetRM(s, d, size, ~v); break;
++    case 3: {
++      SetRM(s, d, size, (0 - v) & m);
++      SetLazy(s, L_SUB, size, 0, v, 0 - v);
++      break;
++    }
++    case 4:
++    case 5: {
++      const unsigned bits = size * 8;
++      u64 lo, hi;
++      bool ovf;
++      if (k == 4) {
++        const unsigned __int128 p = (unsigned __int128)(GetReg(s, 0, size, d.Rex) & m) * v;
++        lo = (u64)p & m;
++        hi = (u64)(p >> bits) & m;
++        ovf = hi != 0;
++      } else {
++        const __int128 p = (__int128)(s64)SExt(GetReg(s, 0, size, d.Rex), size) * (s64)SExt(v, size);
++        lo = (u64)p & m;
++        hi = (u64)(p >> bits) & m;
++        ovf = (__int128)(s64)SExt(lo, size) != p;
++      }
++      if (size == 1) {
++        SetReg(s, 0, 2, d.Rex, lo | (hi << 8));
++      } else {
++        SetReg(s, 0, size, d.Rex, lo);
++        SetReg(s, X86State::REG_RDX, size, d.Rex, hi);
++      }
++      SetMat(s, ZSP(lo, size) | (ovf ? (F_CF | F_OF) : 0));
++      break;
++    }
++    default: {
++      if (v == 0 || size == 1) {
++        return STOP;
++      }
++      const unsigned bits = size * 8;
++      if (k == 6) {
++        const unsigned __int128 n = ((unsigned __int128)(GetReg(s, X86State::REG_RDX, size, d.Rex) & m) << bits) | (GetReg(s, 0, size, d.Rex) & m);
++        const unsigned __int128 q = n / v;
++        if (q > m) {
++          return STOP;
++        }
++        SetReg(s, 0, size, d.Rex, (u64)q);
++        SetReg(s, X86State::REG_RDX, size, d.Rex, (u64)(n % v));
++      } else {
++        const __int128 n = (__int128)(((unsigned __int128)(GetReg(s, X86State::REG_RDX, size, d.Rex) & m) << bits) |
++                                      (GetReg(s, 0, size, d.Rex) & m));
++        const __int128 sn = size == 8 ? n : (__int128)((s64)((u64)n << (64 - 2 * bits)) >> (64 - 2 * bits));
++        const s64 dv = (s64)SExt(v, size);
++        if (dv == -1) {
++          return STOP;
++        }
++        const __int128 q = sn / dv;
++        const s64 lo = size == 8 ? INT64_MIN : -(1ll << (bits - 1)), hi = size == 8 ? INT64_MAX : (1ll << (bits - 1)) - 1;
++        if (q < lo || q > hi) {
++          return STOP;
++        }
++        SetReg(s, 0, size, d.Rex, (u64)q);
++        SetReg(s, X86State::REG_RDX, size, d.Rex, (u64)(sn % dv));
++      }
++      break;
++    }
++    }
++    rip = (u64)d.P;
++    return NEXT;
++  }
++  case 0xFE:
++  case 0xFF: {
++    ModRM(s, d);
++    FinishEA(s, d);
++    const unsigned k = d.Reg & 7;
++    if (op == 0xFE && k > 1) {
++      return STOP;
++    }
++    if (k <= 1) {
++      const unsigned size = op == 0xFE ? 1 : OpSize(d);
++      const u32 cf = CF(s);
++      if (d.Mem && d.Lock) {
++        u64 old = LdN(d.EA, size);
++        while (!CasN(d.EA, size, old, k == 0 ? old + 1 : old - 1)) {
++        }
++        SetLazy(s, k == 0 ? L_INC : L_DEC, size, old, 1, k == 0 ? old + 1 : old - 1);
++      } else {
++        const u64 a = GetRM(s, d, size);
++        const u64 r = k == 0 ? a + 1 : a - 1;
++        SetRM(s, d, size, r);
++        SetLazy(s, k == 0 ? L_INC : L_DEC, size, a, 1, r);
++      }
++      s.F.Mat = cf;
++      rip = (u64)d.P;
++      return NEXT;
++    }
++    if (d.Op16) {
++      return STOP;
++    }
++    switch (k) {
++    case 2: {
++      const u64 t = GetRM(s, d, 8);
++      Push(s, (u64)d.P);
++      if (s.CRBase && !(OffMask & OFF_SHADOW)) {
++        ShadowCall(s);
++      }
++      rip = t;
++      return BRANCH;
++    }
++    case 4: {
++      rip = GetRM(s, d, 8);
++      return BRANCH;
++    }
++    case 6: {
++      Push(s, GetRM(s, d, 8));
++      rip = (u64)d.P;
++      return NEXT;
++    }
++    default: return STOP;
++    }
++  }
++  default: return STOP;
++  }
++}
++
++constexpr unsigned MaxBlockInsts = 4096;
++
++Step Block(IState& s, u64& rip, u64& insts) {
++  for (unsigned n = 0; n < MaxBlockInsts; n++) {
++    s.RIPStart = rip;
++    __asm__ volatile("" ::: "memory");
++    const Step r = One(s, rip);
++    if (r == STOP) {
++      rip = s.RIPStart;
++      return STOP;
++    }
++    s.Ran = 1;
++    insts++;
++    if (r == BRANCH) {
++      return BRANCH;
++    }
++  }
++  return BRANCH;
++}
++
++constexpr unsigned Probes = 512;
++AI Slot* ProbeTable(u64 RIP, bool Insert) {
++  Slot* Tab = Table;
++  const u64 Bucket = (((RIP >> 12) * 0x9E3779B97F4A7C15ull) >> (64 - (TableBits - BucketBits))) << BucketBits;
++  const u64 First = (RIP >> 3) & ((1ull << BucketBits) - 1);
++  for (unsigned probe = 0; probe < Probes; probe++) {
++    Slot& Sl = Tab[(Bucket + First + probe) & (TableSize - 1)];
++    u64 v = Sl.load(std::memory_order_relaxed);
++    if (v == 0) {
++      if (!Insert) {
++        return nullptr;
++      }
++      if (Sl.compare_exchange_strong(v, RIP << 16, std::memory_order_relaxed)) {
++        return &Sl;
++      }
++    }
++    if ((v >> 16) == RIP) {
++      return &Sl;
++    }
++  }
++  return nullptr;
++}
++AI Slot* FindSlot(u64 RIP) {
++  return ProbeTable(RIP, true);
++}
++AI u32 Bump(Slot* Sl, u32 W = 1) {
++  if (!Sl) {
++    return ~0u;
++  }
++  u64 v = Sl->load(std::memory_order_relaxed);
++  u64 n;
++  do {
++    const u64 c = v & COUNT_MASK;
++    n = (v & ~COUNT_MASK) | (c + W > COUNT_MASK ? COUNT_MASK : c + W);
++  } while (n != v && !Sl->compare_exchange_weak(v, n, std::memory_order_relaxed));
++  return (u32)n & 0xffff;
++}
++}
++#pragma clang section text = ""
++
++uint32_t Threshold() {
++  if (ThresholdValue == ~0u) {
++    InitOnce();
++  }
++  return ThresholdValue;
++}
++
++namespace {
++bool NewTable() {
++  if (__atomic_load_n(&Table, __ATOMIC_ACQUIRE)) {
++    return true;
++  }
++  const size_t Bytes = TableSize * sizeof(Slot);
++  void* p = mmap(nullptr, Bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
++  if (p == MAP_FAILED) {
++    return false;
++  }
++  madvise(p, Bytes, MADV_NOHUGEPAGE);
++  Slot* Expected = nullptr;
++  if (!__atomic_compare_exchange_n(&Table, &Expected, static_cast<Slot*>(p), false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
++    munmap(p, Bytes);
++  }
++  return true;
++}
++}
++
++void MarkCompiled(uint64_t RIP) {
++  if (!__atomic_load_n(&Table, __ATOMIC_ACQUIRE)) {
++    return;
++  }
++  if (Slot* Sl = FindSlot(RIP)) {
++    Sl->fetch_or(COMPILED_BIT, std::memory_order_relaxed);
++  }
++}
++
++bool SeenFilter() {
++  return SeenFilterOn;
++}
++bool AllEntries() {
++  return AllEntriesOn;
++}
++
++bool Seen(uint64_t RIP) {
++  if (!__atomic_load_n(&Table, __ATOMIC_ACQUIRE)) {
++    return false;
++  }
++  Slot* Sl = ProbeTable(RIP, false);
++  return Sl && (Sl->load(std::memory_order_relaxed) & COUNT_MASK) != 0;
++}
++
++bool IsTier0PC(uint64_t PC) {
++  return __start_fex_tier0 && PC >= reinterpret_cast<uint64_t>(__start_fex_tier0) && PC < reinterpret_cast<uint64_t>(__stop_fex_tier0);
++}
++
++Result Run(FEXCore::Context::ContextImpl* CTX, FEXCore::Core::InternalThreadState* Thread, uint64_t RIP) {
++  const uint32_t T = Threshold();
++  if (!Table && !NewTable()) {
++    return {0, RIP, false};
++  }
++  if (St) {
++    St->Calls++;
++  }
++
++  Slot* FirstSlot = FindSlot(RIP);
++  if (!FirstSlot && St) {
++    St->Full++;
++  }
++  const u32 First = Bump(FirstSlot, EntryWeight) & COUNT_MASK;
++  if (First > T) {
++    if (St) {
++      St->Hot++;
++    }
++    return {0, RIP, false};
++  }
++
++  auto& S = Thread->CurrentFrame->State;
++  IState& s = *reinterpret_cast<IState*>(Thread->Tier0Scratch);
++  s.S = &S;
++  s.R = S.gregs;
++  s.X = CTX->HostFeatures.SupportsSVE256 ? nullptr : S.xmm.sse.data;
++  s.CRBase = reinterpret_cast<u64>(Thread->CallRetStackBase);
++  s.F.Op = L_MAT;
++  s.F.Mat = ReadFlags(S);
++  s.FStart = s.F;
++  s.Ran = 0;
++  s.RIPStart = RIP;
++  u64 rip = RIP;
++  u64 insts = 0, blocks = 0;
++
++  if (FEXCore::UncheckedLongJump::SetJump(Thread->Tier0Jump)) {
++    Thread->Tier0Active = 0;
++    WriteFlags(S, Materialize(s.F));
++    S.rip = s.RIPStart;
++    if (St) {
++      St->Faults++;
++    }
++    return {0, s.RIPStart, s.Ran != 0};
++  }
++  Thread->Tier0Active = 1;
++
++  Result Res {Thread->CurrentFrame->Pointers.DispatcherLoopTop, 0, true};
++  for (unsigned nb = 0;; nb++) {
++    if (nb) {
++      if (nb >= 64) {
++        if (St) St->Limits++;
++        break;
++      }
++      Slot* Sl = FindSlot(rip);
++      if (!Sl && St) {
++        St->Full++;
++      }
++      const u32 c = Bump(Sl);
++      if (c & COMPILED_BIT) {
++        uintptr_t Host;
++        {
++          auto lk = GuardSignalDeferringSection<std::shared_lock>(CTX->CodeInvalidationMutex, Thread);
++          Host = Thread->LookupCache->FindBlock(Thread, rip);
++        }
++        if (Host) {
++          if (St) St->Found++;
++          Res = {Host, 0, true};
++          break;
++        }
++        if (Sl) {
++          Sl->fetch_and(~COMPILED_BIT, std::memory_order_relaxed);
++        }
++      }
++      if ((c & COUNT_MASK) > T) {
++        if (St) St->Hot++;
++        Res = {0, rip, true};
++        break;
++      }
++    }
++    blocks++;
++    const Step r = Block(s, rip, insts);
++    if (r == STOP) {
++      if (St) {
++        St->Stops++;
++        const u8* p = reinterpret_cast<const u8*>(rip);
++        unsigned i = 0;
++        while (i < 15 && ((p[i] >= 0x40 && p[i] <= 0x4F) || p[i] == 0x66 || p[i] == 0xF2 || p[i] == 0xF3 || p[i] == 0xF0 || p[i] == 0x64 ||
++                          p[i] == 0x65 || p[i] == 0x2E || p[i] == 0x3E)) {
++          i++;
++        }
++        St->StopOp[p[i] == 0x0F ? 256 + p[i + 1] : p[i]]++;
++      }
++      Res = {0, rip, s.Ran != 0};
++      break;
++    }
++  }
++  Thread->Tier0Active = 0;
++  WriteFlags(S, Flags(s));
++  S.rip = rip;
++  if (St) {
++    St->Insts += insts;
++    St->Blocks += blocks;
++  }
++  return Res;
++}
++
++void DumpStats() {
++  const char* Path = secure_getenv("FEV_TIER0_STATS");
++  if (!Path || !St) {
++    return;
++  }
++  char Buf[4096];
++  int n = snprintf(Buf, sizeof(Buf), "T pid=%d threshold=%u calls=%llu insts=%llu blocks=%llu hot=%llu found=%llu stops=%llu faults=%llu limits=%llu full=%llu",
++                   getpid(), ThresholdValue, (unsigned long long)St->Calls.load(), (unsigned long long)St->Insts.load(),
++                   (unsigned long long)St->Blocks.load(), (unsigned long long)St->Hot.load(), (unsigned long long)St->Found.load(),
++                   (unsigned long long)St->Stops.load(), (unsigned long long)St->Faults.load(), (unsigned long long)St->Limits.load(),
++                   (unsigned long long)St->Full.load());
++  bool Used[512] {};
++  n += snprintf(Buf + n, sizeof(Buf) - n, " top=");
++  for (int k = 0; k < 12; k++) {
++    int Best = -1;
++    for (int i = 0; i < 512; i++) {
++      if (!Used[i] && St->StopOp[i].load() && (Best < 0 || St->StopOp[i].load() > St->StopOp[Best].load())) {
++        Best = i;
++      }
++    }
++    if (Best < 0) {
++      break;
++    }
++    Used[Best] = true;
++    n += snprintf(Buf + n, sizeof(Buf) - n, "%s%02x:%llu,", Best >= 256 ? "0f" : "", Best & 0xff, (unsigned long long)St->StopOp[Best].load());
++  }
++  n += snprintf(Buf + n, sizeof(Buf) - n, "\n");
++  int fd = open(Path, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0666);
++  if (fd >= 0) {
++    (void)!write(fd, Buf, n);
++    close(fd);
++  }
++}
++}
++
++namespace FEXCore {
++bool Tier0IsTier0PC(uint64_t PC) {
++  return Tier0::IsTier0PC(PC);
++}
++void Tier0DumpStats() {
++  Tier0::DumpStats();
++}
++}
+diff --git a/FEXCore/Source/Interface/Core/Tier0/Tier0.h b/FEXCore/Source/Interface/Core/Tier0/Tier0.h
+--- a/FEXCore/Source/Interface/Core/Tier0/Tier0.h
++++ b/FEXCore/Source/Interface/Core/Tier0/Tier0.h
+@@ -0,0 +1,32 @@
++// SPDX-License-Identifier: MIT
++#pragma once
++#include <cstdint>
++
++namespace FEXCore::Core {
++struct InternalThreadState;
++}
++namespace FEXCore::Context {
++class ContextImpl;
++}
++
++namespace FEXCore::Tier0 {
++struct Result {
++  uintptr_t HostCode;
++  uint64_t CompileRIP;
++  bool Interpreted;
++};
++
++uint32_t Threshold();
++
++Result Run(FEXCore::Context::ContextImpl* CTX, FEXCore::Core::InternalThreadState* Thread, uint64_t RIP);
++
++bool IsTier0PC(uint64_t PC);
++
++bool Seen(uint64_t RIP);
++bool SeenFilter();
++bool AllEntries();
++
++void MarkCompiled(uint64_t RIP);
++
++void DumpStats();
++}
+diff --git a/FEXCore/include/FEXCore/Debug/InternalThreadState.h b/FEXCore/include/FEXCore/Debug/InternalThreadState.h
+--- a/FEXCore/include/FEXCore/Debug/InternalThreadState.h
++++ b/FEXCore/include/FEXCore/Debug/InternalThreadState.h
+@@ -118,6 +118,10 @@
+   uint64_t JITGuardOverflowArgument {};
+   FEXCore::UncheckedLongJump::JumpBuf RestartJump;
+ 
++  uint64_t Tier0Active {};
++  FEXCore::UncheckedLongJump::JumpBuf Tier0Jump;
++  uint64_t Tier0Scratch[16] {};
++
+   // BaseFrameState should always be at the end, directly before the interrupt fault page
+   FEXCore::Core::CpuStateFrame BaseFrameState {};
+ 
+diff --git a/FEXCore/include/FEXCore/Utils/Tier0.h b/FEXCore/include/FEXCore/Utils/Tier0.h
+--- a/FEXCore/include/FEXCore/Utils/Tier0.h
++++ b/FEXCore/include/FEXCore/Utils/Tier0.h
+@@ -0,0 +1,9 @@
++// SPDX-License-Identifier: MIT
++#pragma once
++#include <FEXCore/Utils/CompilerDefs.h>
++#include <cstdint>
++
++namespace FEXCore {
++FEX_DEFAULT_VISIBILITY bool Tier0IsTier0PC(uint64_t PC);
++FEX_DEFAULT_VISIBILITY void Tier0DumpStats();
++}
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+@@ -6,6 +6,7 @@
+ $end_info$
+ */
+ 
++#include <FEXCore/Utils/Tier0.h>
+ #include "LinuxSyscalls/SignalDelegator.h"
+ #include "LinuxSyscalls/Syscalls.h"
+ 
+@@ -611,6 +612,11 @@
+   }
+ 
+ #ifdef ARCHITECTURE_arm64
++  if (Thread->Tier0Active && FEXCore::Tier0IsTier0PC(ArchHelpers::Context::GetPc(UContext))) {
++    FEXCore::UncheckedLongJump::ManuallyLoadJumpBuf(Thread->Tier0Jump, 1, ArchHelpers::Context::GetArmGPRs(UContext),
++                                                    ArchHelpers::Context::GetArmFPRs(UContext), ArchHelpers::Context::GetArmPc(UContext));
++    return true;
++  }
+   if (Signal == SIGSEGV && SigInfo.si_code == SEGV_ACCERR && Thread->JITGuardPage &&
+       SigInfo.si_addr >= reinterpret_cast<void*>(Thread->JITGuardPage) &&
+       SigInfo.si_addr < reinterpret_cast<void*>(Thread->JITGuardPage + FEXCore::Utils::FEX_PAGE_SIZE)) {
+@@ -1028,6 +1034,11 @@
+   // Register SIGBUS signal handler.
+   const auto SigbusHandler = [](FEXCore::Core::InternalThreadState* Thread, int Signal, void* _info, void* ucontext) -> bool {
+     const auto PC = ArchHelpers::Context::GetPc(ucontext);
++    if (Thread->Tier0Active && FEXCore::Tier0IsTier0PC(PC)) {
++      FEXCore::UncheckedLongJump::ManuallyLoadJumpBuf(Thread->Tier0Jump, 1, ArchHelpers::Context::GetArmGPRs(ucontext),
++                                                      ArchHelpers::Context::GetArmFPRs(ucontext), ArchHelpers::Context::GetArmPc(ucontext));
++      return true;
++    }
+     if (!Thread->CTX->IsAddressInCodeBuffer(Thread, PC)) {
+       // Wasn't a sigbus in JIT code
+       return false;
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
+@@ -1,4 +1,5 @@
+ // SPDX-License-Identifier: MIT
++#include <FEXCore/Utils/Tier0.h>
+ /*
+ $info$
+ tags: LinuxSyscalls|syscalls-shared
+@@ -573,6 +574,7 @@
+   });
+ 
+   REGISTER_SYSCALL_IMPL(exit_group, [](FEXCore::Core::CpuStateFrame* Frame, int status) -> uint64_t {
++    FEXCore::Tier0DumpStats();
+     Frame->Thread->CTX->FlushAndCloseCodeMap();
+     Frame->Thread->CTX->FlushDiskCache();
+ 

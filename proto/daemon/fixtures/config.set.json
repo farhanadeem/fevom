@@ -1,0 +1,24 @@
+{
+  "method": "config.set",
+  "params": {
+    "values": {
+      "memory_mib": 4096,
+      "data_allow_backup": true
+    }
+  },
+  "result": {
+    "changed": [
+      {
+        "key": "data_allow_backup",
+        "value": true,
+        "apply": "live"
+      },
+      {
+        "key": "memory_mib",
+        "value": 4096,
+        "apply": "vm_restart",
+        "pending": true
+      }
+    ]
+  }
+}

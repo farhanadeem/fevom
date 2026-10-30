@@ -1,0 +1,11 @@
+state: running, ready
+node: fev, v1.37.1+k3s1
+api: https://127.0.0.1:6444
+kubeconfig: /Users/tester/.kube/config, context fev
+ranges: load balancers 198.19.8.0/22, pods 198.19.16.0/20, services 198.19.32.0/20, dns 198.19.32.10
+cluster.local: cluster.local is answered by another program's resolver
+images: downloaded, 419.8 MiB (kept by a reset; "fev k8s reset --all" deletes them)
+note: 127.0.0.1:6443 is held by another program on this Mac
+note: pods 198.19.16.0/20 overlaps this Mac's network 198.19.20.0/24 (en0); fev reset chooses a new base
+note: these ports are held by other programs on this Mac and not forwarded: 127.0.0.1:30080 (tcp): already in use on this Mac ("fev ports" says more)
+cost: Kubernetes uses about a tenth of a core and 2 GiB of memory while on

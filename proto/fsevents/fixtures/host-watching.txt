@@ -1,0 +1,5 @@
+watching seq=1 paths=4
+  ok
+  outside
+  missing
+  failed

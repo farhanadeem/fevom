@@ -1,0 +1,18 @@
+{
+  "method": "docker.restart",
+  "params": {},
+  "result": {
+    "engine": "ready",
+    "socket": "/Users/someone/.fev/run/docker.sock",
+    "context": {
+      "name": "fev",
+      "exists": true,
+      "selected": true,
+      "current": "fev"
+    },
+    "compat_socket": "absent",
+    "config_file": "/Users/someone/.fev/config/docker.json",
+    "config_state": "refused",
+    "config_error": "unable to configure the Docker daemon with file /run/fev/daemon.json: the following directives don't match any configuration option: default-adress-pools"
+  }
+}

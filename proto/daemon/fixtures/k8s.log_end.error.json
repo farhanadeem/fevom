@@ -1,0 +1,8 @@
+{
+  "method": "k8s.log_end",
+  "notification": true,
+  "params": {
+    "subscription": 10,
+    "error": "previous terminated container \"web\" in pod \"web-7c9d8b6f5-x2kqz\" not found"
+  }
+}

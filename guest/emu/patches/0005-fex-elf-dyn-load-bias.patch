@@ -1,0 +1,29 @@
+diff --git a/Source/Tools/FEXInterpreter/ELFCodeLoader.h b/Source/Tools/FEXInterpreter/ELFCodeLoader.h
+--- a/Source/Tools/FEXInterpreter/ELFCodeLoader.h
++++ b/Source/Tools/FEXInterpreter/ELFCodeLoader.h
+@@ -54,6 +54,16 @@
+ 
+   // This calculates the map size for ET_DYN type ELF files.
+   // Can't be used for ET_EXEC ELF files because they can have large virtual mapping holes.
++  static size_t CalculateDYNELFMinAddress(const fextl::vector<Elf64_Phdr>& headers) {
++    size_t min_map_address = ~0ULL;
++    for (const auto& it : headers) {
++      if (it.p_type == PT_LOAD) {
++        min_map_address = std::min(min_map_address, PAGE_START(it.p_vaddr));
++      }
++    }
++    return min_map_address == ~0ULL ? 0 : min_map_address;
++  }
++
+   static size_t CalculateDYNELFSize(const fextl::vector<Elf64_Phdr>& headers) {
+     bool had_pt_load = false;
+     size_t min_map_address = ~0ULL;
+@@ -147,6 +157,8 @@
+       if (BrkBase) {
+         BrkLoadBase = LoadBase + (TotalSize - BRK_SIZE);
+       }
++
++      LoadBase -= CalculateDYNELFMinAddress(Elf.phdrs);
+     }
+ 
+     for (const auto& Header : Elf.phdrs) {

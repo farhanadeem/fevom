@@ -1,0 +1,12 @@
+diff --git a/net/sunrpc/cache.c b/net/sunrpc/cache.c
+--- a/net/sunrpc/cache.c
++++ b/net/sunrpc/cache.c
+@@ -1535,7 +1535,7 @@
+ 		now = cd->flush_time + 1;
+ 
+ 	cd->flush_time = now;
+-	cd->nextcheck = now;
++	cd->nextcheck = seconds_since_boot();
+ 	cache_flush();
+ 
+ 	if (cd->flush)

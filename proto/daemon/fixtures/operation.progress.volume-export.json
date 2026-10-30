@@ -1,0 +1,22 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "operation": {
+      "id": "op-20261019T101500-7",
+      "method": "volumes.export",
+      "target": "pgdata",
+      "state": "done",
+      "phase": "archive",
+      "done_bytes": 52428800,
+      "total_bytes": 52428800,
+      "started": "2026-10-19T10:15:00Z",
+      "ended": "2026-10-19T10:15:02Z",
+      "result": {
+        "path": "/Users/ada/Backups/pgdata.tar.zst",
+        "bytes": 9437184
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+ssh fev                  the default user in the default machine
+ssh MACHINE@fev          the default user in MACHINE
+ssh USER@MACHINE@fev     USER in MACHINE
+
+host: 0.0.0.0
+port: 32122 (listening)
+user: default, or MACHINE, or USER@MACHINE
+key: /Users/ada/.fev/ssh/id_ed25519
+known hosts: /Users/ada/.fev/ssh/known_hosts
+config: /Users/ada/.fev/ssh/config (not included in ~/.ssh/config: "fev setup" includes it, or ssh -F /Users/ada/.fev/ssh/config)
+host key: 256 SHA256:q0T8m2n5cXH3l7vYwE1rZ9kF4bJ6uA0dS2gP8hN3eM4 fev (ED25519)
+authorized keys: /Users/ada/.fev/ssh/authorized_keys
+warning: /Users/ada/.fev/ssh/authorized_keys is writable by others; no key in it is accepted until it is not
+
+VS Code Remote SSH: connect to host "fev" (or MACHINE@fev).
+JetBrains Gateway: host 127.0.0.1, port 32122, user default (or MACHINE), key /Users/ada/.fev/ssh/id_ed25519.

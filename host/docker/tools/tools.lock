@@ -1,0 +1,5 @@
+tool docker 29.9.0 Apache-2.0 c640fd61d9ba801e0ea282fd0df344d6943efd1994c7454537707cdb7a3d3e0b https://download.docker.com/mac/static/stable/aarch64/docker-29.9.0.tgz docker/docker
+tool docker-compose v5.6.0 Apache-2.0 bd714a42b46e51757fc1121085b3096b9064e3f80d3ca5a991e33f44df4f43c9 https://github.com/docker/compose/releases/download/v5.6.0/docker-compose-darwin-aarch64
+tool docker-buildx v0.38.0 Apache-2.0 85989b895add5f119c1ccf8eada2f6892fc33ccf16bd8917638eae404ef26344 https://github.com/docker/buildx/releases/download/v0.38.0/buildx-v0.38.0.darwin-arm64
+tool docker-credential-osxkeychain v0.9.9 MIT 3585188b1df1c3568ae536999eddb48ad2c781b3cf07a2f7d7181262d045820c https://github.com/docker/docker-credential-helpers/releases/download/v0.9.9/docker-credential-osxkeychain-v0.9.9.darwin-arm64
+tool kubectl v1.37.1 Apache-2.0 fd65982c97ddad3106754b69ffa196d0e543aa591930ae52aed1adfb92f8c77f https://dl.k8s.io/release/v1.37.1/bin/darwin/arm64/kubectl

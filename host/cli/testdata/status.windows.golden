@@ -1,0 +1,5 @@
+state: running
+engine: ready
+since: 2026-10-10T12:00:00.4Z
+boot: c40d19
+read window: on, 256 GiB of the data disk

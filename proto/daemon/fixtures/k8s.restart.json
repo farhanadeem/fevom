@@ -1,0 +1,28 @@
+{
+  "method": "k8s.restart",
+  "params": {
+    "kind": "Deployment",
+    "namespace": "default",
+    "name": "web"
+  },
+  "result": {
+    "kind": "Deployment",
+    "namespace": "default",
+    "name": "web",
+    "uid": "5b1d3c2e-8f4a-4e1b-9c7d-2a6f0e3b1c55",
+    "created": "2026-10-23T21:01:00Z",
+    "resource_version": "1288",
+    "labels": {
+      "app": "web"
+    },
+    "workload": {
+      "wanted": 2,
+      "ready": 2,
+      "updated": 0,
+      "available": 2,
+      "images": [
+        "web:dev"
+      ]
+    }
+  }
+}

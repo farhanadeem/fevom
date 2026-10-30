@@ -1,0 +1,158 @@
+diff --git a/net/sunrpc/svcsock.c b/net/sunrpc/svcsock.c
+--- a/net/sunrpc/svcsock.c
++++ b/net/sunrpc/svcsock.c
+@@ -51,6 +51,10 @@
+ #include <linux/highmem.h>
+ #include <asm/ioctls.h>
+ #include <linux/key.h>
++#include <uapi/linux/vm_sockets.h>
++#if IS_REACHABLE(CONFIG_VSOCKETS)
++#include <net/af_vsock.h>
++#endif
+ 
+ #include <linux/sunrpc/types.h>
+ #include <linux/sunrpc/clnt.h>
+@@ -920,7 +924,22 @@
+ 			svc_xprt_deferred_close(&svsk->sk_xprt);
+ 	}
+ }
++
++static int svc_vsock_as_loopback(struct sockaddr *sa, bool peer)
++{
++	struct sockaddr_vm *svm = (struct sockaddr_vm *)sa;
++	struct sockaddr_in *sin = (struct sockaddr_in *)sa;
++	unsigned int port = svm->svm_port;
+ 
++	if (peer && svm->svm_cid != VMADDR_CID_HOST)
++		return -EACCES;
++	memset(sin, 0, sizeof(*sin));
++	sin->sin_family = AF_INET;
++	sin->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
++	sin->sin_port = htons(port & 0xffff);
++	return sizeof(*sin);
++}
++
+ /*
+  * Accept a TCP connection
+  */
+@@ -956,6 +975,11 @@
+ 		goto failed;		/* aborted connection or whatever */
+ 	}
+ 	slen = err;
++	if (sin->sa_family == AF_VSOCK) {
++		slen = svc_vsock_as_loopback(sin, true);
++		if (slen < 0)
++			goto failed;
++	}
+ 
+ 	/* Reset the inherited callbacks before calling svc_setup_socket */
+ 	newsock->sk->sk_state_change = svsk->sk_ostate;
+@@ -976,6 +1000,8 @@
+ 	slen = err;
+ 	if (unlikely(err < 0))
+ 		slen = offsetof(struct sockaddr, sa_data);
++	else if (sin->sa_family == AF_VSOCK)
++		slen = svc_vsock_as_loopback(sin, false);
+ 	svc_xprt_set_local(&newsvsk->sk_xprt, sin, slen);
+ 
+ 	if (sock_is_loopback(newsock->sk))
+@@ -1125,6 +1151,24 @@
+ unlock_eagain:
+ 	spin_unlock(&bc_xprt->queue_lock);
+ 	return -EAGAIN;
++}
++
++#define SVC_VSOCK_LOWAT_MAX	(64 * 1024)
++
++static void svc_vsock_lowat(struct svc_sock *svsk, size_t n)
++{
++#if IS_REACHABLE(CONFIG_VSOCKETS)
++	struct sock *sk = svsk->sk_sk;
++
++	if (sk->sk_family != AF_VSOCK)
++		return;
++	n = clamp_t(size_t, n, 1, SVC_VSOCK_LOWAT_MAX);
++	if (READ_ONCE(sk->sk_rcvlowat) != n)
++		WRITE_ONCE(sk->sk_rcvlowat, n);
++	smp_mb();
++	if (vsock_stream_has_data(vsock_sk(sk)) >= (s64)n)
++		set_bit(XPT_DATA, &svsk->sk_xprt.xpt_flags);
++#endif
+ }
+ 
+ static void svc_tcp_fragment_received(struct svc_sock *svsk)
+@@ -1132,6 +1176,7 @@
+ 	/* If we have more data, signal svc_xprt_enqueue() to try again */
+ 	svsk->sk_tcplen = 0;
+ 	svsk->sk_marker = xdr_zero;
++	svc_vsock_lowat(svsk, 1);
+ }
+ 
+ /**
+@@ -1221,10 +1266,12 @@
+ 		goto err_delete;
+ 	if (len == want)
+ 		svc_tcp_fragment_received(svsk);
+-	else
++	else {
+ 		trace_svcsock_tcp_recv_short(&svsk->sk_xprt,
+ 				svc_sock_reclen(svsk),
+ 				svsk->sk_tcplen - sizeof(rpc_fraghdr));
++		svc_vsock_lowat(svsk, want - (len > 0 ? len : 0));
++	}
+ 	goto err_noclose;
+ error:
+ 	if (len != -EAGAIN)
+@@ -1378,7 +1425,8 @@
+ 	if (sk->sk_state == TCP_LISTEN) {
+ 		strcpy(svsk->sk_xprt.xpt_remotebuf, "listener");
+ 		set_bit(XPT_LISTENER, &svsk->sk_xprt.xpt_flags);
+-		set_bit(XPT_RPCB_UNREG, &svsk->sk_xprt.xpt_flags);
++		if (sk->sk_family != AF_VSOCK)
++			set_bit(XPT_RPCB_UNREG, &svsk->sk_xprt.xpt_flags);
+ 		sk->sk_data_ready = svc_tcp_listen_data_ready;
+ 		set_bit(XPT_CONN, &svsk->sk_xprt.xpt_flags);
+ 	} else {
+@@ -1392,7 +1440,8 @@
+ 		memset(&svsk->sk_pages[0], 0,
+ 		       svsk->sk_maxpages * sizeof(struct page *));
+ 
+-		tcp_sock_set_nodelay(sk);
++		if (sk->sk_family != AF_VSOCK)
++			tcp_sock_set_nodelay(sk);
+ 
+ 		set_bit(XPT_DATA, &svsk->sk_xprt.xpt_flags);
+ 		switch (sk->sk_state) {
+@@ -1532,10 +1581,12 @@
+ 	if (sock_net(so->sk) != net)
+ 		goto out;
+ 	err = -EAFNOSUPPORT;
+-	if ((so->sk->sk_family != PF_INET) && (so->sk->sk_family != PF_INET6))
++	if ((so->sk->sk_family != PF_INET) && (so->sk->sk_family != PF_INET6) &&
++	    (so->sk->sk_family != PF_VSOCK || so->sk->sk_type != SOCK_STREAM))
+ 		goto out;
+ 	err =  -EPROTONOSUPPORT;
+-	if (so->sk->sk_protocol != IPPROTO_TCP &&
++	if (so->sk->sk_family != PF_VSOCK &&
++	    so->sk->sk_protocol != IPPROTO_TCP &&
+ 	    so->sk->sk_protocol != IPPROTO_UDP)
+ 		goto out;
+ 	err = -EISCONN;
+@@ -1544,13 +1595,16 @@
+ 	err = -ENOENT;
+ 	if (!try_module_get(THIS_MODULE))
+ 		goto out;
+-	svsk = svc_setup_socket(serv, so, SVC_SOCK_DEFAULTS);
++	svsk = svc_setup_socket(serv, so, so->sk->sk_family == PF_VSOCK ?
++				SVC_SOCK_ANONYMOUS : SVC_SOCK_DEFAULTS);
+ 	if (IS_ERR(svsk)) {
+ 		module_put(THIS_MODULE);
+ 		err = PTR_ERR(svsk);
+ 		goto out;
+ 	}
+ 	salen = kernel_getsockname(svsk->sk_sock, sin);
++	if (salen >= 0 && sin->sa_family == AF_VSOCK)
++		salen = svc_vsock_as_loopback(sin, false);
+ 	if (salen >= 0)
+ 		svc_xprt_set_local(&svsk->sk_xprt, sin, salen);
+ 	svsk->sk_xprt.xpt_cred = get_cred(cred);

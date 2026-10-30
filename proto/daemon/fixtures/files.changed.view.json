@@ -1,0 +1,28 @@
+{
+  "method": "files.changed",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "share": true,
+    "root": "/",
+    "mount": "/mnt/mac",
+    "hidden": [
+      "/Users/someone/.fev/data",
+      "/Users/someone/.fev/run"
+    ],
+    "events": true,
+    "watch": {
+      "seq": 4,
+      "paths": [
+        "/Users/someone/src/app"
+      ]
+    },
+    "view": {
+      "state": "failed",
+      "path": "/Users/someone/Fevom",
+      "socket": "/Users/someone/.fev/run/view.sock",
+      "hidden": true,
+      "error": "mount_nfs: exited 1: Operation timed out"
+    }
+  }
+}

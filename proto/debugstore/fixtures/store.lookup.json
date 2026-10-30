@@ -1,0 +1,24 @@
+{
+  "method": "store.lookup",
+  "params": {
+    "command": "emacs"
+  },
+  "result": {
+    "candidates": [
+      {
+        "attr": "emacs",
+        "name": "emacs-30.2",
+        "version": "30.2",
+        "store_path": "/nix/store/2r6c8m0p9k3l4n5o6q7s8t9u0v1w2x3y-emacs-30.2",
+        "license": "GNU General Public License v3.0 or later",
+        "pick": true
+      },
+      {
+        "attr": "emacs-nox",
+        "name": "emacs-nox-30.2",
+        "version": "30.2",
+        "license": "GNU General Public License v3.0 or later"
+      }
+    ]
+  }
+}

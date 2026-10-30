@@ -1,0 +1,15 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "id": 21,
+    "method": "volume.export",
+    "state": "done",
+    "phase": "archive",
+    "done_bytes": 52428800,
+    "total_bytes": 52428800,
+    "result": {
+      "bytes": 52428800
+    }
+  }
+}

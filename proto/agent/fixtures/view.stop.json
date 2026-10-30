@@ -1,0 +1,8 @@
+{
+  "method": "view.stop",
+  "params": {},
+  "result": {
+    "state": "stopped",
+    "since": "2026-10-17T09:40:11.002Z"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "method": "k8s.log_end",
+  "notification": true,
+  "params": {
+    "subscription": 9
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "method": "localnames.set",
+  "params": {"names": ["app-custom.local", "nas.local", "shop.local"]},
+  "result": {
+    "names": [
+      {"name": "app-custom.local", "state": "present"},
+      {"name": "nas.local", "state": "refused", "reason": "answered by mDNS on en0", "answered_by": "172.16.30.20"},
+      {"name": "shop.local", "state": "present"}
+    ]
+  }
+}

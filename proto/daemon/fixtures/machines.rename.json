@@ -1,0 +1,22 @@
+{
+  "method": "machines.rename",
+  "params": {
+    "name": "dev2",
+    "new_name": "web"
+  },
+  "result": {
+    "name": "web",
+    "state": "stopped",
+    "image": {
+      "distro": "ubuntu",
+      "release": "questing",
+      "arch": "arm64",
+      "variant": "cloud",
+      "serial": "20261014_07:42"
+    },
+    "user": "ada",
+    "address": "198.19.0.12",
+    "disk_size": 0,
+    "since": "2026-10-14T10:21:30Z"
+  }
+}

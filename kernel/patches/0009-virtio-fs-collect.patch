@@ -1,0 +1,64 @@
+diff --git a/fs/fuse/virtio_fs.c b/fs/fuse/virtio_fs.c
+--- a/fs/fuse/virtio_fs.c
++++ b/fs/fuse/virtio_fs.c
+@@ -99,7 +99,13 @@
+ 
+ static int virtio_fs_enqueue_req(struct virtio_fs_vq *fsvq,
+ 				 struct fuse_req *req, bool in_flight,
+-				 gfp_t gfp);
++				 gfp_t gfp, bool collect);
++
++static bool fev_collect = true;
++module_param(fev_collect, bool, 0644);
++MODULE_PARM_DESC(fev_collect, "Collect answers after a notification, without an interrupt");
++
++static void virtio_fs_requests_done_work(struct work_struct *work);
+ 
+ static const struct constant_table dax_param_enums[] = {
+ 	{"always",	FUSE_DAX_ALWAYS },
+@@ -591,7 +597,7 @@
+ 		spin_unlock(&fsvq->lock);
+ 
+ 		flags = memalloc_nofs_save();
+-		ret = virtio_fs_enqueue_req(fsvq, req, true, GFP_KERNEL);
++		ret = virtio_fs_enqueue_req(fsvq, req, true, GFP_KERNEL, false);
+ 		memalloc_nofs_restore(flags);
+ 		if (ret < 0) {
+ 			if (ret == -ENOSPC) {
+@@ -1393,7 +1399,7 @@
+ /* Add a request to a virtqueue and kick the device */
+ static int virtio_fs_enqueue_req(struct virtio_fs_vq *fsvq,
+ 				 struct fuse_req *req, bool in_flight,
+-				 gfp_t gfp)
++				 gfp_t gfp, bool collect)
+ {
+ 	/* requests need at least 4 elements */
+ 	struct scatterlist *stack_sgs[6];
+@@ -1477,11 +1483,16 @@
+ 	if (!in_flight)
+ 		inc_in_flight_req(fsvq);
+ 	notify = virtqueue_kick_prepare(vq);
++	collect = collect && notify;
++	if (collect)
++		virtqueue_disable_cb(vq);
+ 
+ 	spin_unlock(&fsvq->lock);
+ 
+ 	if (notify)
+ 		virtqueue_notify(vq);
++	if (collect)
++		virtio_fs_requests_done_work(&fsvq->done_work);
+ 
+ out:
+ 	if (ret < 0 && req->argbuf) {
+@@ -1517,7 +1528,9 @@
+ 		 queue_id);
+ 
+ 	fsvq = &fs->vqs[queue_id];
+-	ret = virtio_fs_enqueue_req(fsvq, req, false, GFP_ATOMIC);
++	ret = virtio_fs_enqueue_req(fsvq, req, false, GFP_ATOMIC,
++				    READ_ONCE(fev_collect) &&
++				    !test_bit(FR_BACKGROUND, &req->flags));
+ 	if (ret < 0) {
+ 		if (ret == -ENOSPC) {
+ 			/*

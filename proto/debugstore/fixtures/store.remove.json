@@ -1,0 +1,10 @@
+{
+  "method": "store.remove",
+  "params": {
+    "names": ["emacs-30.2"]
+  },
+  "result": {
+    "removed": ["/nix/store/2r6c8m0p9k3l4n5o6q7s8t9u0v1w2x3y-emacs-30.2"],
+    "freed_bytes": 419430400
+  }
+}

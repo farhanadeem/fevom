@@ -1,0 +1,20 @@
+export LANG="${LANG:-C.UTF-8}"
+if command -v dircolors >/dev/null 2>&1; then
+  eval "$(dircolors -b "${ZDOTDIR:-/nix/var/fev/etc}/dircolors" 2>/dev/null)"
+fi
+alias ls='ls --color=auto'
+alias grep='grep --color=auto'
+alias ll='ls -lh --color=auto'
+if [ "$(id -u)" = "0" ]; then _c='\[\e[31m\]'; else _c='\[\e[32m\]'; fi
+PS1="${_c}fev\[\e[0m\]:\[\e[34m\]\w\[\e[0m\] \$ "
+unset _c
+HISTFILE="${HOME:-/tmp}/.bash_history"
+HISTSIZE=10000
+HISTFILESIZE=10000
+command_not_found_handle() {
+  if ! type -P galley >/dev/null 2>&1; then
+    echo "bash: $1: command not found" >&2
+    return 127
+  fi
+  galley not-found "$@"
+}

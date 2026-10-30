@@ -1,0 +1,13 @@
+{
+  "method": "engine.restart",
+  "params": {
+    "grace_ms": 2000
+  },
+  "result": {
+    "state": "starting",
+    "pid": 377,
+    "starts": 2,
+    "started_ms": 60412.25,
+    "last_exit": "signal 9"
+  }
+}

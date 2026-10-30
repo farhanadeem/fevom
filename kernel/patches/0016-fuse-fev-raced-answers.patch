@@ -1,0 +1,196 @@
+diff --git a/fs/fuse/fuse_i.h b/fs/fuse/fuse_i.h
+--- a/fs/fuse/fuse_i.h
++++ b/fs/fuse/fuse_i.h
+@@ -213,6 +213,8 @@
+ 
+ 	atomic_t fev_free;
+ 
++	atomic_t fev_changes;
++
+ 	/**
+ 	 * @mutex: Lock for serializing lookup and readdir for back
+ 	 * compatibility
+@@ -943,6 +945,11 @@
+ void fuse_fev_name_listed(struct inode *dir, const char *name,
+ 			    unsigned int len);
+ 
++void fuse_fev_dir_record(struct inode *dir);
++int fuse_fev_dir_changes(struct inode *dir);
++void fuse_fev_raced(struct inode *dir, int changes, struct dentry *entry,
++		      struct inode *inode);
++
+ /*
+  * Initialize READ or READDIR request
+  */
+diff --git a/fs/fuse/dir.c b/fs/fuse/dir.c
+--- a/fs/fuse/dir.c
++++ b/fs/fuse/dir.c
+@@ -486,8 +486,37 @@
+ 	if (!fuse_fev_name_bits(name, len, &a, &b) ||
+ 	    !(test_bit(a, n->bits) && test_bit(b, n->bits)))
+ 		fuse_fev_dir_incomplete(dir);
++}
++
++void fuse_fev_dir_record(struct inode *dir)
++{
++	if (!IS_ENABLED(CONFIG_FUSE_FEV_CACHE))
++		return;
++	atomic_inc(&get_fuse_inode(dir)->fev_changes);
++	smp_mb__after_atomic();
++}
++
++int fuse_fev_dir_changes(struct inode *dir)
++{
++	if (!IS_ENABLED(CONFIG_FUSE_FEV_CACHE))
++		return 0;
++	return atomic_read(&get_fuse_inode(dir)->fev_changes);
+ }
+ 
++void fuse_fev_raced(struct inode *dir, int changes, struct dentry *entry,
++		      struct inode *inode)
++{
++	if (!IS_ENABLED(CONFIG_FUSE_FEV_CACHE))
++		return;
++	smp_mb();
++	if (atomic_read(&get_fuse_inode(dir)->fev_changes) == changes)
++		return;
++	if (entry)
++		fuse_invalidate_entry_cache(entry);
++	if (inode)
++		fuse_invalidate_attr(inode);
++}
++
+ static void fuse_fev_dir_made(struct fuse_conn *fc, struct inode *inode,
+ 				struct fuse_entry_out *o, int epoch, int records)
+ {
+@@ -769,7 +798,7 @@
+ 	struct fuse_conn *fc;
+ 	struct inode *inode;
+ 	struct dentry *newent;
+-	int err, epoch;
++	int err, epoch, changes;
+ 	bool outarg_valid = true;
+ 	bool locked;
+ 
+@@ -778,6 +807,7 @@
+ 
+ 	fc = get_fuse_conn_super(dir->i_sb);
+ 	epoch = atomic_read(&fc->epoch);
++	changes = fuse_fev_dir_changes(dir);
+ 
+ 	if (fuse_fev_absent(dir, &entry->d_name)) {
+ 		inode = NULL;
+@@ -810,6 +840,7 @@
+ 		fuse_change_entry_timeout(entry, &outarg);
+ 	else
+ 		fuse_invalidate_entry_cache(entry);
++	fuse_fev_raced(dir, changes, entry, inode);
+ 
+ 	if (inode)
+ 		fuse_advise_use_readdirplus(dir);
+@@ -988,7 +1019,7 @@
+ 	struct fuse_entry_out outentry;
+ 	struct fuse_inode *fi;
+ 	struct fuse_file *ff;
+-	int epoch, err;
++	int epoch, err, changes;
+ 
+ 	fuse_fev_name_made(dir, &entry->d_name);
+ 	bool trunc = flags & O_TRUNC;
+@@ -997,6 +1028,7 @@
+ 	BUG_ON((mode & S_IFMT) != S_IFREG);
+ 
+ 	epoch = atomic_read(&fm->fc->epoch);
++	changes = fuse_fev_dir_changes(dir);
+ 	forget = fuse_alloc_forget();
+ 	err = -ENOMEM;
+ 	if (!forget)
+@@ -1072,6 +1104,7 @@
+ 		d_instantiate(entry, inode);
+ 	fuse_dentry_set_epoch(entry, epoch);
+ 	fuse_change_entry_timeout(entry, &outentry);
++	fuse_fev_raced(dir, changes, entry, inode);
+ 	fuse_dir_changed(dir);
+ 	err = generic_file_open(inode, file);
+ 	if (!err) {
+@@ -1162,13 +1195,14 @@
+ 	struct inode *inode;
+ 	struct dentry *d;
+ 	struct fuse_forget_link *forget;
+-	int epoch, err, records;
++	int epoch, err, records, changes;
+ 
+ 	if (fuse_is_bad(dir))
+ 		return ERR_PTR(-EIO);
+ 
+ 	epoch = atomic_read(&fm->fc->epoch);
+ 	records = atomic_read(&fm->fc->fev_records);
++	changes = fuse_fev_dir_changes(dir);
+ 	fuse_fev_name_made(dir, &entry->d_name);
+ 
+ 	forget = fuse_alloc_forget();
+@@ -1221,6 +1255,7 @@
+ 		fuse_dentry_set_epoch(entry, epoch);
+ 		fuse_change_entry_timeout(entry, &outarg);
+ 	}
++	fuse_fev_raced(dir, changes, d ?: entry, inode);
+ 	fuse_dir_changed(dir);
+ 	return d;
+ 
+diff --git a/fs/fuse/readdir.c b/fs/fuse/readdir.c
+--- a/fs/fuse/readdir.c
++++ b/fs/fuse/readdir.c
+@@ -156,7 +156,8 @@
+ 
+ static int fuse_direntplus_link(struct file *file,
+ 				struct fuse_direntplus *direntplus,
+-				u64 attr_version, u64 evict_ctr, int epoch)
++				u64 attr_version, u64 evict_ctr, int epoch,
++				int changes)
+ {
+ 	struct fuse_entry_out *o = &direntplus->entry_out;
+ 	struct fuse_dirent *dirent = &direntplus->dirent;
+@@ -266,6 +267,7 @@
+ 		set_bit(FUSE_I_INIT_RDPLUS, &get_fuse_inode(inode)->state);
+ 	fuse_dentry_set_epoch(dentry, epoch);
+ 	fuse_change_entry_timeout(dentry, o);
++	fuse_fev_raced(dir, changes, dentry, inode);
+ 
+ 	dput(dentry);
+ 	return 0;
+@@ -294,7 +296,8 @@
+ 
+ static int parse_dirplusfile(char *buf, size_t nbytes, struct file *file,
+ 			     struct dir_context *ctx, u64 attr_version,
+-			     u64 evict_ctr, int epoch, bool *whole)
++			     u64 evict_ctr, int epoch, int changes,
++			     bool *whole)
+ {
+ 	struct fuse_direntplus *direntplus;
+ 	struct fuse_dirent *dirent;
+@@ -332,7 +335,7 @@
+ 		nbytes -= reclen;
+ 
+ 		ret = fuse_direntplus_link(file, direntplus, attr_version,
+-					   evict_ctr, epoch);
++					   evict_ctr, epoch, changes);
+ 		if (ret)
+ 			fuse_force_forget(file, direntplus->entry_out.nodeid);
+ 	}
+@@ -391,6 +394,7 @@
+ 	size_t bufsize = clamp((unsigned int) ctx->count, PAGE_SIZE, fc->max_pages << PAGE_SHIFT);
+ 	u64 attr_version = 0, evict_ctr = 0;
+ 	int epoch = atomic_read(&fm->fc->epoch);
++	int changes = fuse_fev_dir_changes(inode);
+ 	bool locked;
+ 	struct fuse_file *bff = file->private_data;
+ 	size_t replied;
+@@ -443,7 +447,7 @@
+ 		if (plus) {
+ 			res = parse_dirplusfile(buf, res, file, ctx,
+ 						attr_version, evict_ctr, epoch,
+-						&whole);
++						changes, &whole);
+ 			if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) &&
+ 			    fc->fev_requests && !res && whole &&
+ 			    replied + FUSE_DIRENT_ALIGN(FUSE_NAME_OFFSET_DIRENTPLUS +

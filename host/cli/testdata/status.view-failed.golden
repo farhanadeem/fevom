@@ -1,0 +1,5 @@
+state: running
+engine: ready
+since: 2026-10-18T09:12:30.2Z
+boot: a3f9c2
+view: /Users/someone/Fevom not mounted: /Users/someone/Fevom holds files of its own (notes.txt): fev shows its view there; move them, and fev mounts it at the next start

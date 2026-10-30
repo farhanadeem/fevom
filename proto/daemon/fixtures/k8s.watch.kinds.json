@@ -1,0 +1,13 @@
+{
+  "method": "k8s.watch",
+  "params": {
+    "kinds": [
+      "Pod"
+    ],
+    "namespace": "kube-system"
+  },
+  "result": {
+    "subscription": 8,
+    "objects": []
+  }
+}

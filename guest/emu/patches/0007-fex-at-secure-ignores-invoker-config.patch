@@ -1,0 +1,84 @@
+diff --git a/Source/Common/Config.cpp b/Source/Common/Config.cpp
+--- a/Source/Common/Config.cpp
++++ b/Source/Common/Config.cpp
+@@ -19,6 +19,7 @@
+ #ifndef _WIN32
+ #include <linux/limits.h>
+ #include <pwd.h>
++#include <sys/auxv.h>
+ #endif
+ #include <optional>
+ #include <utility>
+@@ -489,6 +490,16 @@
+   if (!IsPortable) {
+     FEXCore::Config::AddLayer(CreateGlobalMainLayer());
+   }
++
++#ifndef _WIN32
++  if (getauxval(AT_SECURE)) {
++    if (!ProgramName.empty() && !IsPortable) {
++      FEXCore::Config::AddLayer(CreateAppLayer(ProgramName, FEXCore::Config::LayerType::LAYER_GLOBAL_APP));
++    }
++    FEXCore::Config::Load();
++    return;
++  }
++#endif
+   FEXCore::Config::AddLayer(CreateMainLayer(nullptr, ProgramName.empty() ? std::nullopt : std::optional {ProgramName}));
+ 
+   if (!ProgramName.empty()) {
+diff --git a/Source/Tools/FEXInterpreter/FEXInterpreter.cpp b/Source/Tools/FEXInterpreter/FEXInterpreter.cpp
+--- a/Source/Tools/FEXInterpreter/FEXInterpreter.cpp
++++ b/Source/Tools/FEXInterpreter/FEXInterpreter.cpp
+@@ -375,6 +375,10 @@
+ static int StealFEXFDFromEnv(const char* Env) {
+   int FEXFD {-1};
+   const char* FEXFDStr = getenv(Env);
++  if (FEXFDStr && getauxval(AT_SECURE)) {
++    unsetenv(Env);
++    return -1;
++  }
+   if (FEXFDStr) {
+     const std::string_view FEXFDView {FEXFDStr};
+     std::from_chars(FEXFDView.data(), FEXFDView.data() + FEXFDView.size(), FEXFD, 10);
+@@ -393,7 +397,7 @@
+ 
+   int FEXFD {StealFEXFDFromEnv("FEX_EXECVEFD")};
+   int FEXSeccompFD {StealFEXFDFromEnv("FEX_SECCOMPFD")};
+-  const bool FEXFDPathBacked = getenv("FEX_EXECVEFD_PATH") != nullptr;
++  const bool FEXFDPathBacked = getenv("FEX_EXECVEFD_PATH") != nullptr && !getauxval(AT_SECURE);
+   unsetenv("FEX_EXECVEFD_PATH");
+ 
+   // Early init trivial handlers.
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/FileManagement.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/FileManagement.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/FileManagement.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/FileManagement.cpp
+@@ -34,6 +34,7 @@
+ #include <filesystem>
+ #include <optional>
+ #include <stdio.h>
++#include <sys/auxv.h>
+ #include <sys/stat.h>
+ #include <sys/statfs.h>
+ #include <sys/xattr.h>
+@@ -209,8 +210,10 @@
+     ThunkConfigFile,
+   };
+ 
+-  auto SteamID = getenv("SteamAppId");
+-  if (SteamID) {
++  auto SteamID = getauxval(AT_SECURE) ? nullptr : getenv("SteamAppId");
++  if (getauxval(AT_SECURE)) {
++    ConfigPaths.emplace_back(FEXCore::Config::GetApplicationConfig(AppName, true));
++  } else if (SteamID) {
+     // If a SteamID exists then let's search for Steam application configs as well.
+     // We want to key off both the SteamAppId number /and/ the executable since we may not want to thunk all binaries.
+     fextl::string SteamAppName = fextl::fmt::format("Steam_{}_{}", SteamID, AppName);
+@@ -225,7 +228,7 @@
+     ConfigPaths.emplace_back(FEXCore::Config::GetApplicationConfig(AppName, false));
+   }
+ 
+-  const char* AppConfig = getenv("FEX_APP_CONFIG");
++  const char* AppConfig = getauxval(AT_SECURE) ? nullptr : getenv("FEX_APP_CONFIG");
+   if (AppConfig) {
+     ConfigPaths.emplace_back(AppConfig);
+   }

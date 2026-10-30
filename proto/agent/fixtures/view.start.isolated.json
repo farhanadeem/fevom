@@ -1,0 +1,12 @@
+{
+  "method": "view.start",
+  "params": {
+    "uid": 501,
+    "gid": 20,
+    "isolated": ["sandbox"]
+  },
+  "result": {
+    "state": "starting",
+    "since": "2026-10-18T08:12:03.204Z"
+  }
+}

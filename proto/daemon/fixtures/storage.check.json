@@ -1,0 +1,12 @@
+{
+  "method": "storage.check",
+  "params": {},
+  "result": {
+    "id": "op-20261019T100000-1",
+    "method": "storage.check",
+    "target": "data",
+    "state": "running",
+    "phase": "scrub",
+    "started": "2026-10-19T10:00:00Z"
+  }
+}

@@ -1,0 +1,57 @@
+Fevom, build @BUILD@: opening it the first time
+==============================================
+
+This build is signed ad hoc, not by a registered developer, so
+macOS refuses its first open until you allow it once. Fevom needs an Apple
+silicon Mac with macOS 26 or later.
+
+1. Open Fevom-@BUILD@.dmg and drag Fevom.app onto the Applications folder
+   beside it. Then eject the disk image.
+
+2. Allow it, one of two ways:
+
+   a. In Terminal (one command, nothing to click):
+
+        xattr -dr com.apple.quarantine /Applications/Fevom.app
+
+   b. Or in the Finder: open Fevom.app. macOS says it cannot verify it;
+      click Done. Then System Settings > Privacy & Security, scroll to
+      "Fevom was blocked to protect your Mac", click Open Anyway, and
+      confirm with your password. Open Fevom.app again.
+
+3. Fevom opens and offers its setup: fev and docker on your PATH (a
+   fenced block in your shell's profile, taken back by "fev setup
+   --undo"). Two steps are optional and asked separately:
+     - the admin helper (your password once): containers' and machines'
+       own IP addresses and *.fev.local names on this Mac, and ports
+       below 1024;
+     - trusting fev's own root for HTTPS on *.fev.local (one dialog).
+
+4. Open a new terminal: docker, docker compose and fev work, and docker
+   commands go to fev (its Docker context is made the current one; the
+   one you had before comes back when you remove fev).
+
+What to expect with a build like this one:
+  - macOS asks again for what you allowed (Files and Folders access, the
+    firewall's question about incoming connections) after each new build
+    you install: the permission belongs to the build.
+  - Updating: a Fevom whose menu has Fevom > Check for Updates... updates
+    itself: it checks once a day, shows what is new and installs when you
+    say so, quitting and reopening Fevom. Otherwise, by hand: quit Fevom
+    (its menu bar item > Quit), drag the new Fevom.app onto Applications
+    and choose Replace, then open it. Either way it stops fev's older
+    build and starts its own. Your containers, images, volumes and
+    machines stay; running machines start again, and containers do if their
+    restart policy says so (as after a restart of Docker). Nothing to type:
+    setup is not asked again.
+
+Removing Fevom: choose Uninstall Fevom... in the app's menu, or in Terminal
+     fev uninstall
+which takes back everything fev set up and removes the app. Your
+containers, images, volumes and machines stay unless you also delete them:
+     fev uninstall --delete-data
+
+Licences: Fevom.app/Contents/Resources/licenses (README.txt, LICENSE,
+SOURCE-OFFER.txt, TERMS.txt). Fevom is free software under the GNU GPL,
+version 3 or later; its source is published with each release and offered
+in SOURCE-OFFER.txt: https://github.com/farhanadeem/fevom.

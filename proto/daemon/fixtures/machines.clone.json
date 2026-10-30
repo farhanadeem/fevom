@@ -1,0 +1,22 @@
+{
+  "method": "machines.clone",
+  "params": {
+    "name": "dev",
+    "new_name": "dev2"
+  },
+  "result": {
+    "name": "dev2",
+    "state": "stopped",
+    "image": {
+      "distro": "ubuntu",
+      "release": "questing",
+      "arch": "arm64",
+      "variant": "cloud",
+      "serial": "20261014_07:42"
+    },
+    "user": "ada",
+    "address": "198.19.0.12",
+    "disk_size": 0,
+    "since": "2026-10-14T10:20:00Z"
+  }
+}

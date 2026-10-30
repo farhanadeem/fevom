@@ -1,0 +1,19 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "operation": {
+      "id": "op-20261014T100140-5",
+      "method": "machines.create",
+      "target": "f43",
+      "state": "failed",
+      "phase": "download",
+      "done_bytes": 52428800,
+      "total_bytes": 287309824,
+      "started": "2026-10-14T10:01:40Z",
+      "ended": "2026-10-14T10:01:52Z",
+      "error": "rootfs.tar.xz does not match SHA256SUMS: the build was not kept"
+    }
+  }
+}

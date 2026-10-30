@@ -1,0 +1,13 @@
+[package]
+name = "fileshare"
+version = "0.0.0"
+edition.workspace = true
+license-file.workspace = true
+publish.workspace = true
+description = "The fev file share: a FUSE request decoder over a filesystem trait, and a macOS passthrough filesystem."
+
+[features]
+testing = []
+
+[dependencies]
+libc = "0.2"

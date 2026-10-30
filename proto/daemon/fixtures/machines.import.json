@@ -1,0 +1,15 @@
+{
+  "method": "machines.import",
+  "params": {
+    "path": "/Users/ada/Backups/dev.tar.zst",
+    "name": "dev-copy"
+  },
+  "result": {
+    "id": "op-20261014T104500-3",
+    "method": "machines.import",
+    "target": "dev-copy",
+    "state": "running",
+    "phase": "archive",
+    "started": "2026-10-14T10:45:00Z"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "method": "fileshare.state",
+  "notification": true,
+  "params": {
+    "tag": "mac",
+    "target": "/mnt/mac",
+    "device": true,
+    "feed": "lost",
+    "feed_error": "the change feed's connection ended: EOF",
+    "watching": 0,
+    "records": 5312,
+    "refused": 0,
+    "invalidations": 2
+  }
+}

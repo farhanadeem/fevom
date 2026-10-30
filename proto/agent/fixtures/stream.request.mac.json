@@ -1,0 +1,10 @@
+{
+  "method": "stream.request",
+  "notification": true,
+  "params": {
+    "token": "7d6c5b4a39284716a5b4c3d2e1f00f1e",
+    "service": "mac",
+    "machine": "dev",
+    "uid": 501
+  }
+}

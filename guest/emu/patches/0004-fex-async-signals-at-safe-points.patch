@@ -1,0 +1,328 @@
+diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
+--- a/FEXCore/Source/Interface/Core/Core.cpp
++++ b/FEXCore/Source/Interface/Core/Core.cpp
+@@ -368,6 +368,10 @@
+     // If gdbserver is enabled then this needs to be enabled.
+     Config.NeedsPendingInterruptFaultCheck = true;
+   }
++
++#ifndef _WIN32
++  Config.NeedsPendingInterruptFaultCheck = true;
++#endif
+ 
+   if constexpr (BLOCK_DEBUGGING) {
+     // If the developer wants to do any single-stepping points or watch points.
+diff --git a/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp b/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp
+--- a/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp
++++ b/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp
+@@ -524,6 +524,17 @@
+     // This gives the signal handler a value to check to see if we are in a syscall at all
+     LoadConstant(ARMEmitter::Size::i64Bit, ARMEmitter::Reg::r0, 0xFFFF);
+     str(ARMEmitter::XReg::x0, STATE, offsetof(FEXCore::Core::CpuStateFrame, InSyscallInfo));
++#ifndef _WIN32
++    {
++      constexpr size_t InterruptPageOffset =
++        offsetof(FEXCore::Core::InternalThreadState, InterruptFaultPage) - offsetof(FEXCore::Core::InternalThreadState, BaseFrameState);
++      if constexpr (InterruptPageOffset <= 32760) {
++        str(ARMEmitter::XReg::zr, STATE, InterruptPageOffset);
++      } else {
++        str(ARMEmitter::QReg::q0, STATE, InterruptPageOffset);
++      }
++    }
++#endif
+ 
+     ldr(ARMEmitter::XReg::x0, STATE, offsetof(FEXCore::Core::CpuStateFrame, Pointers.SyscallHandlerObj));
+     ldr(ARMEmitter::XReg::x3, STATE, offsetof(FEXCore::Core::CpuStateFrame, Pointers.SyscallHandlerFunc));
+diff --git a/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp b/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
+--- a/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
+@@ -243,13 +243,48 @@
+   const auto Op = IROp->C<IR::IROp_Jump>();
+ 
+   PendingTargetLabel = JumpTarget(Op->TargetBlock);
++  PendingTargetBlock = Op->TargetBlock;
+ }
+ 
+ DEF_OP(CondJump) {
+   auto Op = IROp->C<IR::IROp_CondJump>();
+ 
+   auto TrueTargetLabel = JumpTarget(Op->TrueBlock);
++
++  if (TrueTargetLabel->Backward.Location && CTX->Config.NeedsPendingInterruptFaultCheck) {
++    const auto Target = IR->GetOp<IR::IROp_CodeBlock>(Op->TrueBlock);
++    if (Target->EntryPoint || Target->GuestEntryOffset != 0) {
++      ARMEmitter::ForwardLabel Skip {};
++      if (Op->FromNZCV) {
++        (void)b(InvertCondition(MapCC(Op->Cond)), &Skip);
++      } else {
++        auto Reg = GetReg(Op->Cmp1);
++        const auto Size = Op->CompareSize == IR::OpSize::i32Bit ? ARMEmitter::Size::i32Bit : ARMEmitter::Size::i64Bit;
++        uint64_t Const {};
++        [[maybe_unused]] const bool isConst = IsInlineConstant(Op->Cmp2, &Const);
++        if (Op->Cond == IR::CondClass::EQ) {
++          (void)cbnz(Size, Reg, &Skip);
++        } else if (Op->Cond == IR::CondClass::NEQ) {
++          (void)cbz(Size, Reg, &Skip);
++        } else if (Op->Cond == IR::CondClass::TSTZ) {
++          (void)tbnz(Reg, Const, &Skip);
++        } else if (Op->Cond == IR::CondClass::TSTNZ) {
++          (void)tbz(Reg, Const, &Skip);
++        } else {
++          LOGMAN_THROW_A_FMT(false, "CondJump expected simple condition");
++        }
++      }
++      const auto Prev = EmitBackedgeInterruptCheck(Op->TrueBlock);
++      b_OrRestart(TrueTargetLabel);
++      (void)Bind(&Skip);
++      EndBackedgeInterruptCheck(Prev);
+ 
++      PendingTargetLabel = JumpTarget(Op->FalseBlock);
++      PendingTargetBlock = Op->FalseBlock;
++      return;
++    }
++  }
++
+   if (Op->FromNZCV) {
+     b_OrRestart(MapCC(Op->Cond), TrueTargetLabel);
+   } else {
+@@ -280,6 +315,7 @@
+   }
+ 
+   PendingTargetLabel = JumpTarget(Op->FalseBlock);
++  PendingTargetBlock = Op->FalseBlock;
+ }
+ 
+ DEF_OP(Syscall) {
+diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+--- a/FEXCore/Source/Interface/Core/JIT/JIT.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+@@ -830,6 +830,8 @@
+   // Two instruction cost, each 1 cycle.
+   adr_OrRestart(TMP1, &HeaderLabel);
+   str(TMP1, STATE, offsetof(FEXCore::Core::CPUState, InlineJITBlockHeader));
++
++  EmitSuspendInterruptCheck();
+ 
+   if (CheckTF) {
+     EmitTFCheck();
+@@ -845,8 +847,26 @@
+       sub(ARMEmitter::Size::i64Bit, ARMEmitter::XReg::rsp, ARMEmitter::XReg::rsp, TMP1, ARMEmitter::ExtendedType::LSL_64, 0);
+     }
+   }
++}
+ 
++int64_t Arm64JITCore::EmitBackedgeInterruptCheck(IR::OrderedNodeWrapper TargetBlock) {
++  if (!CTX->Config.NeedsPendingInterruptFaultCheck) {
++    return -1;
++  }
++  const auto Target = IR->GetOp<IR::IROp_CodeBlock>(TargetBlock);
++  if (!Target->EntryPoint && Target->GuestEntryOffset == 0) {
++    return -1;
++  }
++  const int64_t Prev = DebugData->GuestOpcodes.empty() ? 0 : DebugData->GuestOpcodes.back().GuestEntryOffset;
++  DebugData->GuestOpcodes.push_back({Target->GuestEntryOffset, GetCursorAddress<uint8_t*>() - CodeData.BlockBegin});
+   EmitSuspendInterruptCheck();
++  return Prev;
++}
++
++void Arm64JITCore::EndBackedgeInterruptCheck(int64_t Prev) {
++  if (Prev >= 0) {
++    DebugData->GuestOpcodes.push_back({static_cast<uint64_t>(Prev), GetCursorAddress<uint8_t*>() - CodeData.BlockBegin});
++  }
+ }
+ 
+ 
+@@ -976,10 +996,12 @@
+ 
+       // if there's a pending branch, and it is not fall-through
+       if (PendingTargetLabel && PendingTargetLabel != Target) {
++        int64_t Prev = -1;
+         if (PendingTargetLabel->Backward.Location) {
+-          EmitSuspendInterruptCheck();
++          Prev = EmitBackedgeInterruptCheck(PendingTargetBlock);
+         }
+         b_OrRestart(PendingTargetLabel);
++        EndBackedgeInterruptCheck(Prev);
+         PendingTargetLabel = nullptr;
+       }
+ 
+@@ -1032,10 +1054,12 @@
+ 
+   // Make sure last branch is generated. It certainly can't be eliminated here.
+   if (PendingTargetLabel) {
++    int64_t Prev = -1;
+     if (PendingTargetLabel->Backward.Location) {
+-      EmitSuspendInterruptCheck();
++      Prev = EmitBackedgeInterruptCheck(PendingTargetBlock);
+     }
+     b_OrRestart(PendingTargetLabel);
++    EndBackedgeInterruptCheck(Prev);
+   }
+   PendingTargetLabel = nullptr;
+ 
+diff --git a/FEXCore/Source/Interface/Core/JIT/JITClass.h b/FEXCore/Source/Interface/Core/JIT/JITClass.h
+--- a/FEXCore/Source/Interface/Core/JIT/JITClass.h
++++ b/FEXCore/Source/Interface/Core/JIT/JITClass.h
+@@ -86,6 +86,7 @@
+   uint32_t SSANodeMultiplier {24};
+ 
+   ARMEmitter::BiDirectionalLabel* PendingTargetLabel {};
++  IR::OrderedNodeWrapper PendingTargetBlock {};
+   ARMEmitter::BiDirectionalLabel* PendingCallReturnTargetLabel {};
+   FEXCore::Context::ContextImpl* CTX {};
+   const FEXCore::IR::IRListView* IR {};
+@@ -635,6 +636,8 @@
+   void EmitTFCheck();
+ 
+   void EmitSuspendInterruptCheck();
++  int64_t EmitBackedgeInterruptCheck(IR::OrderedNodeWrapper TargetBlock);
++  void EndBackedgeInterruptCheck(int64_t Prev);
+ 
+   void EmitEntryPoint(ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF);
+ 
+diff --git a/Source/Tools/LinuxEmulation/ArchHelpers/MContext.h b/Source/Tools/LinuxEmulation/ArchHelpers/MContext.h
+--- a/Source/Tools/LinuxEmulation/ArchHelpers/MContext.h
++++ b/Source/Tools/LinuxEmulation/ArchHelpers/MContext.h
+@@ -49,6 +49,7 @@
+   uint64_t FPStateLocation;
+   uint64_t UContextLocation;
+   uint64_t SigInfoLocation;
++  uint64_t SavedLoopSP;
+   FEXCore::Core::CPUState GuestState;
+   static constexpr int RedZoneSize = 128;
+ };
+@@ -76,6 +77,7 @@
+   uint64_t FPStateLocation;
+   uint64_t UContextLocation;
+   uint64_t SigInfoLocation;
++  uint64_t SavedLoopSP;
+   FEXCore::Core::CPUState GuestState;
+ 
+   // Arm64 doesn't have a red zone
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+@@ -171,6 +171,7 @@
+   Context->UContextLocation = 0;
+   Context->SigInfoLocation = 0;
+   Context->InSyscallInfo = 0;
++  Context->SavedLoopSP = FEX::HLE::ThreadManager::GetStateObjectFromFEXCoreThread(Thread)->SignalInfo.LoopSP;
+ 
+   // Store fault to top status and then reset it
+   Context->FaultToTopAndGeneratedException = Thread->CurrentFrame->SynchronousFaultData.FaultToTopAndGeneratedException;
+@@ -256,6 +257,7 @@
+ 
+   // Restore host state
+   ArchHelpers::Context::RestoreContext(ucontext, Context);
++  FEX::HLE::ThreadManager::GetStateObjectFromFEXCoreThread(Thread)->SignalInfo.LoopSP = Context->SavedLoopSP;
+ 
+   // Reset the guest state
+   memcpy(&Thread->CurrentFrame->State, &Context->GuestState, sizeof(FEXCore::Core::CPUState));
+@@ -398,6 +400,7 @@
+   ArchHelpers::Context::SetFillSRASingleInst(ucontext, false);
+   // Set our state register to point to our guest thread data
+   ArchHelpers::Context::SetState(ucontext, reinterpret_cast<uint64_t>(Frame));
++  FEX::HLE::ThreadManager::GetStateObjectFromFEXCoreThread(Thread)->SignalInfo.LoopSP = ArchHelpers::Context::GetSp(ucontext);
+ 
+   return true;
+ }
+@@ -594,7 +597,19 @@
+   auto SigInfo = *static_cast<siginfo_t*>(Info);
+ 
+   auto MustDeferSignal = (Thread->CurrentFrame->State.DeferredSignalRefCount.Load() != 0);
++
++  const uint64_t SignalPC = ArchHelpers::Context::GetPc(UContext);
++  const bool InGuestSyscall = Thread->CurrentFrame->InSyscallInfo == 0xFFFF && !CTX->IsAddressInCodeBuffer(Thread, SignalPC);
++  const bool DeferToSafePoint =
++    !InGuestSyscall && ThreadObject->SignalInfo.DeferredSignalFrames.size() < ThreadObject->SignalInfo.DeferredSignalFrames.capacity();
++
+   if (Signal == SIGSEGV && SigInfo.si_code == SEGV_ACCERR && SigInfo.si_addr == reinterpret_cast<void*>(&Thread->InterruptFaultPage)) {
++    if (!MustDeferSignal && !InGuestSyscall && !CTX->IsAddressInCodeBuffer(Thread, SignalPC)) {
++#ifdef ARCHITECTURE_arm64
++      ArchHelpers::Context::SetPc(UContext, SignalPC + 4);
++      return;
++#endif
++    }
+     if (!MustDeferSignal) {
+       // We just reached the end of the outermost signal-deferring section and faulted to check for pending signals.
+       // Pull a signal frame off the stack.
+@@ -635,7 +650,7 @@
+       ERROR_AND_DIE_FMT("X86 shouldn't hit this InterruptFaultPage");
+ #endif
+     }
+-  } else if (IsAsyncSignal(&SigInfo, Signal) && MustDeferSignal) {
++  } else if (IsAsyncSignal(&SigInfo, Signal) && (MustDeferSignal || DeferToSafePoint)) {
+     // If the signal is asynchronous (as determined by si_code) and FEX is in a state of needing
+     // to defer the signal, then add the signal to the thread's signal queue.
+     LOGMAN_THROW_A_FMT(ThreadObject->SignalInfo.DeferredSignalFrames.size() != ThreadObject->SignalInfo.DeferredSignalFrames.capacity(),
+@@ -1034,7 +1049,7 @@
+   if (Thread->Thread) {
+     // Reserve a small amount of deferred signal frames. Usually the stack won't be utilized beyond
+     // 1 or 2 signals but add a few more just in case.
+-    Thread->SignalInfo.DeferredSignalFrames.reserve(8);
++    Thread->SignalInfo.DeferredSignalFrames.reserve(64);
+   }
+ }
+ 
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator/GuestFramesManagement.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator/GuestFramesManagement.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator/GuestFramesManagement.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator/GuestFramesManagement.cpp
+@@ -7,6 +7,7 @@
+ */
+ 
+ #include "LinuxSyscalls/SignalDelegator.h"
++#include "LinuxSyscalls/ThreadManager.h"
+ 
+ #include <FEXCore/Core/Context.h>
+ #include <FEXCore/Core/SignalDelegator.h>
+@@ -132,6 +133,12 @@
+   // If the guest modified the RIP then we need to take special precautions here
+   if (Context->OriginalRIP != guest_uctx->uc_mcontext.gregs[FEXCore::x86_64::FEX_REG_RIP] || Context->FaultToTopAndGeneratedException) {
+ 
++    Frame->InSyscallInfo = 0;
++    {
++      const uint64_t LoopSP = FEX::HLE::ThreadManager::GetStateObjectFromFEXCoreThread(Thread)->SignalInfo.LoopSP;
++      ArchHelpers::Context::SetSp(ucontext, LoopSP ? LoopSP : Frame->ReturningStackLocation);
++    }
++
+     // Hack! Go back to the top of the dispatcher top
+     // This is only safe inside the JIT rather than anything outside of it
+     ArchHelpers::Context::SetPc(ucontext, Config.AbsoluteLoopTopAddressFillSRA);
+@@ -211,6 +218,12 @@
+   Frame->InSyscallInfo = Context->InSyscallInfo;
+   // If the guest modified the RIP then we need to take special precautions here
+   if (Context->OriginalRIP != guest_uctx->sc.ip || Context->FaultToTopAndGeneratedException) {
++    Frame->InSyscallInfo = 0;
++    {
++      const uint64_t LoopSP = FEX::HLE::ThreadManager::GetStateObjectFromFEXCoreThread(Thread)->SignalInfo.LoopSP;
++      ArchHelpers::Context::SetSp(ucontext, LoopSP ? LoopSP : Frame->ReturningStackLocation);
++    }
++
+     // Hack! Go back to the top of the dispatcher top
+     // This is only safe inside the JIT rather than anything outside of it
+     ArchHelpers::Context::SetPc(ucontext, Config.AbsoluteLoopTopAddressFillSRA);
+@@ -289,6 +302,12 @@
+   // If the guest modified the RIP then we need to take special precautions here
+   if (Context->OriginalRIP != guest_uctx->uc.uc_mcontext.gregs[FEXCore::x86::FEX_REG_EIP] || Context->FaultToTopAndGeneratedException) {
+ 
++    Frame->InSyscallInfo = 0;
++    {
++      const uint64_t LoopSP = FEX::HLE::ThreadManager::GetStateObjectFromFEXCoreThread(Thread)->SignalInfo.LoopSP;
++      ArchHelpers::Context::SetSp(ucontext, LoopSP ? LoopSP : Frame->ReturningStackLocation);
++    }
++
+     // Hack! Go back to the top of the dispatcher top
+     // This is only safe inside the JIT rather than anything outside of it
+     ArchHelpers::Context::SetPc(ucontext, Config.AbsoluteLoopTopAddressFillSRA);
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/ThreadManager.h b/Source/Tools/LinuxEmulation/LinuxSyscalls/ThreadManager.h
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/ThreadManager.h
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/ThreadManager.h
+@@ -79,6 +79,8 @@
+     FEX::HLE::GuestSAMask PreviousSuspendMask {};
+ 
+     uint64_t PendingSignals {};
++
++    uint64_t LoopSP {};
+ 
+     // Queue of thread local signal frames that have been deferred.
+     // Async signals aren't guaranteed to be delivered in any particular order, but FEX treats them as FILO.

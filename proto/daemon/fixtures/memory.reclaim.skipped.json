@@ -1,0 +1,14 @@
+{
+  "method": "memory.reclaim",
+  "params": {
+    "floor_mib": 256
+  },
+  "result": {
+    "file_before_bytes": 150994944,
+    "file_after_bytes": 150994944,
+    "reclaimed_bytes": 0,
+    "floor_mib": 256,
+    "skipped": "floor",
+    "duration_ms": 0.4
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "method": "k8s.get",
+  "params": {
+    "kind": "Deployment",
+    "namespace": "default",
+    "name": "web"
+  },
+  "result": {
+    "ref": {
+      "api_version": "apps/v1",
+      "kind": "Deployment",
+      "namespace": "default",
+      "name": "web"
+    },
+    "resource_version": "1204",
+    "yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  namespace: default\n  resourceVersion: \"1204\"\n  labels:\n    app: web\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n      app: web\n  template:\n    metadata:\n      labels:\n        app: web\n    spec:\n      containers:\n      - name: web\n        image: web:dev\n        imagePullPolicy: IfNotPresent\n"
+  }
+}

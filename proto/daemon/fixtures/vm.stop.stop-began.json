@@ -1,0 +1,14 @@
+{
+  "method": "vm.stop",
+  "params": {
+    "stop_began_ns": 41738250413000
+  },
+  "result": {
+    "seq": 14,
+    "state": "running",
+    "engine": "ready",
+    "since": "2026-10-16T05:06:02.1Z",
+    "boot_id": "b503ae",
+    "pending_restart": []
+  }
+}

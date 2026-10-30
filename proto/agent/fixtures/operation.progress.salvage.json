@@ -1,0 +1,19 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "id": 8,
+    "method": "storage.salvage",
+    "state": "done",
+    "phase": "restore",
+    "result": {
+      "method": "restore",
+      "files": 18234,
+      "bytes": 2147483648,
+      "errors": [
+        "/@docker/volumes/pgdata/_data/base/16384/2619: checksum mismatch, 8192 bytes not read"
+      ],
+      "lost": 1
+    }
+  }
+}

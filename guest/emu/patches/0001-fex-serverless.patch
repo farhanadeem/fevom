@@ -1,0 +1,36 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -30,6 +30,7 @@
+ option(ENABLE_VIXL_DISASSEMBLER "Enable debug disassembler output with VIXL" FALSE)
+ option(ENABLE_ZYDIS "Enable x86/x86-64 guest disassembler output with Zydis" FALSE)
+ option(USE_LEGACY_BINFMTMISC "Use legacy method of setting up binfmt_misc" FALSE)
++option(FEX_SERVERLESS "Never connect to or start FEXServer; the x86-64 root is the root FEX runs in" FALSE)
+ option(ENABLE_FEXCORE_PROFILER "Enable FEXCore's timeline profiling capabilities" FALSE)
+ set(FEXCORE_PROFILER_BACKEND "gpuvis" CACHE STRING "Set which backend to use for FEXCore's profiler")
+ set_property(CACHE FEXCORE_PROFILER_BACKEND PROPERTY STRINGS gpuvis tracy)
+@@ -120,6 +121,10 @@
+   add_compile_definitions(FEX_STEAM_SUPPORT=1)
+ endif()
+ 
++if (FEX_SERVERLESS)
++  add_compile_definitions(FEX_SERVERLESS=1)
++endif()
++
+ if (ENABLE_FEXCORE_PROFILER)
+   add_compile_definitions(ENABLE_FEXCORE_PROFILER=1)
+   string(TOUPPER "${FEXCORE_PROFILER_BACKEND}" FEXCORE_PROFILER_BACKEND)
+diff --git a/Source/Common/FEXServerClient.cpp b/Source/Common/FEXServerClient.cpp
+--- a/Source/Common/FEXServerClient.cpp
++++ b/Source/Common/FEXServerClient.cpp
+@@ -236,6 +236,10 @@
+ }
+ 
+ bool SetupClient(std::string_view InterpreterPath) {
++#ifdef FEX_SERVERLESS
++  ServerFD = -1;
++  return true;
++#endif
+   ServerFD = FEXServerClient::ConnectToAndStartServer(InterpreterPath);
+   if (ServerFD == -1) {
+     return false;

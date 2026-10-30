@@ -1,0 +1,88 @@
+diff --git a/include/linux/fs.h b/include/linux/fs.h
+--- a/include/linux/fs.h
++++ b/include/linux/fs.h
+@@ -1429,6 +1429,14 @@
+ static inline void i_gid_write(struct inode *inode, gid_t gid)
+ {
+ 	inode->i_gid = make_kgid(i_user_ns(inode), gid);
++}
++
++#define S_CALLER_OWNER	(1 << 20)
++
++static inline bool i_caller_owner(const struct inode *inode)
++{
++	return IS_ENABLED(CONFIG_FUSE_CALLER_OWNER) &&
++	       unlikely(inode->i_flags & S_CALLER_OWNER);
+ }
+ 
+ /**
+@@ -1442,6 +1450,8 @@
+ static inline vfsuid_t i_uid_into_vfsuid(struct mnt_idmap *idmap,
+ 					 const struct inode *inode)
+ {
++	if (i_caller_owner(inode))
++		return VFSUIDT_INIT(current_fsuid());
+ 	return make_vfsuid(idmap, i_user_ns(inode), inode->i_uid);
+ }
+ 
+@@ -1494,6 +1504,8 @@
+ static inline vfsgid_t i_gid_into_vfsgid(struct mnt_idmap *idmap,
+ 					 const struct inode *inode)
+ {
++	if (i_caller_owner(inode))
++		return VFSGIDT_INIT(current_fsgid());
+ 	return make_vfsgid(idmap, i_user_ns(inode), inode->i_gid);
+ }
+ 
+diff --git a/include/uapi/linux/fuse.h b/include/uapi/linux/fuse.h
+--- a/include/uapi/linux/fuse.h
++++ b/include/uapi/linux/fuse.h
+@@ -581,6 +581,8 @@
+  */
+ #define FUSE_ATTR_SUBMOUNT      (1 << 0)
+ #define FUSE_ATTR_DAX		(1 << 1)
++#define FUSE_ATTR_REAL_OWNER	(1U << 30)
++#define FUSE_ATTR_CALLER_OWNER	(1U << 31)
+ 
+ /**
+  * Open flags
+diff --git a/fs/fuse/inode.c b/fs/fuse/inode.c
+--- a/fs/fuse/inode.c
++++ b/fs/fuse/inode.c
+@@ -240,6 +240,21 @@
+ 	inode->i_uid     = make_kuid(fc->user_ns, attr->uid);
+ 	inode->i_gid     = make_kgid(fc->user_ns, attr->gid);
+ 	inode->i_blocks  = attr->blocks;
++	if (IS_ENABLED(CONFIG_FUSE_CALLER_OWNER) && !sx &&
++	    fc->user_ns == &init_user_ns) {
++		switch (attr->flags &
++			(FUSE_ATTR_CALLER_OWNER | FUSE_ATTR_REAL_OWNER)) {
++		case FUSE_ATTR_CALLER_OWNER:
++			if (!(inode->i_flags & S_CALLER_OWNER))
++				inode_set_flags(inode, S_CALLER_OWNER,
++						S_CALLER_OWNER);
++			break;
++		case FUSE_ATTR_REAL_OWNER:
++			if (inode->i_flags & S_CALLER_OWNER)
++				inode_set_flags(inode, 0, S_CALLER_OWNER);
++			break;
++		}
++	}
+ 
+ 	/* Sanitize nsecs */
+ 	attr->atimensec = min_t(u32, attr->atimensec, NSEC_PER_SEC - 1);
+diff --git a/fs/fuse/dir.c b/fs/fuse/dir.c
+--- a/fs/fuse/dir.c
++++ b/fs/fuse/dir.c
+@@ -1377,6 +1377,11 @@
+ 	vfsgid_t vfsgid = make_vfsgid(idmap, fc->user_ns,
+ 				      make_kgid(fc->user_ns, attr->gid));
+ 
++	if (i_caller_owner(inode)) {
++		vfsuid = i_uid_into_vfsuid(idmap, inode);
++		vfsgid = i_gid_into_vfsgid(idmap, inode);
++	}
++
+ 	stat->dev = inode->i_sb->s_dev;
+ 	stat->ino = attr->ino;
+ 	stat->mode = (inode->i_mode & S_IFMT) | (attr->mode & 07777);

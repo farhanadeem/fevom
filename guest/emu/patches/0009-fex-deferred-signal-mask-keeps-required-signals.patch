@@ -1,0 +1,21 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+@@ -662,10 +662,16 @@
+     auto& [sigmask_val] = _context->uc_sigmask;
+     static_assert(sizeof(sigmask_val[0]) == sizeof(uint64_t), "Unknown sigset_t layout");
+ 
++    uint64_t RequiredSignals {};
++    for (size_t i = 0; i < MAX_SIGNALS; ++i) {
++      if (HostHandlers[i + 1].Required.load(std::memory_order_relaxed)) {
++        RequiredSignals |= 1ULL << i;
++      }
++    }
+     ThreadObject->SignalInfo.DeferredSignalFrames.emplace_back(ThreadStateObject::DeferredSignalState {
+       .Info = SigInfo,
+       .Signal = Signal,
+-      .SigMask = sigmask_val[0],
++      .SigMask = sigmask_val[0] & ~RequiredSignals,
+     });
+ 
+     // Update our host signal mask so we don't hit race conditions with signals

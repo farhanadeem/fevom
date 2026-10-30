@@ -1,0 +1,13 @@
+{
+  "method": "agent.hello",
+  "params": {
+    "api_version": 1,
+    "build": "dcd8a24-dirty.0a1b2c3d",
+    "client": "fevd"
+  },
+  "result": {
+    "api_version": 1,
+    "agent_version": "dcd8a24-dirty.0a1b2c3d",
+    "kernel": "7.2.9"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "method": "machines.create",
+  "params": {
+    "name": "u64",
+    "distro": "ubuntu",
+    "release": "noble",
+    "arch": "amd64"
+  },
+  "result": {
+    "id": "op-20261018T190455-2",
+    "method": "machines.create",
+    "target": "u64",
+    "state": "running",
+    "phase": "verify",
+    "started": "2026-10-18T19:04:55Z"
+  }
+}

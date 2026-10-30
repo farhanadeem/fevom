@@ -1,0 +1,12 @@
+{
+  "method": "engine.ports_changed",
+  "notification": true,
+  "params": {
+    "address": "127.0.0.1",
+    "seq": 8,
+    "ports": [
+      {"proto": "tcp", "address": "0.0.0.0", "port": 18555},
+      {"proto": "udp", "address": "0.0.0.0", "port": 5005}
+    ]
+  }
+}

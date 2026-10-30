@@ -1,0 +1,19 @@
+{
+  "method": "contexts.list",
+  "params": {},
+  "result": {
+    "contexts": [
+      {
+        "name": "default",
+        "host": "unix:///var/run/docker.sock",
+        "current": true,
+        "description": "Current DOCKER_HOST based configuration"
+      },
+      {
+        "name": "work-remote",
+        "host": "ssh://deploy@build.example",
+        "description": "staging builder"
+      }
+    ]
+  }
+}

@@ -1,0 +1,447 @@
+diff --git a/fs/btrfs/direct-io.c b/fs/btrfs/direct-io.c
+--- a/fs/btrfs/direct-io.c
++++ b/fs/btrfs/direct-io.c
+@@ -5,6 +5,7 @@
+ #include "ctree.h"
+ #include "delalloc-space.h"
+ #include "direct-io.h"
++#include "qgroup.h"
+ #include "extent-tree.h"
+ #include "file.h"
+ #include "fs.h"
+@@ -809,8 +810,15 @@
+ 	.iomap_begin            = btrfs_dio_iomap_begin,
+ 	.iomap_end              = btrfs_dio_iomap_end,
+ };
++
++static int btrfs_dio_user_end_io(struct kiocb *iocb, ssize_t size, int error,
++				 unsigned int flags)
++{
++	return btrfs_qgroup_user_errno(error);
++}
+ 
+ static const struct iomap_dio_ops btrfs_dio_ops = {
++	.end_io			= btrfs_dio_user_end_io,
+ 	.submit_io		= btrfs_dio_submit_io,
+ 	.bio_set		= &btrfs_dio_bioset,
+ };
+diff --git a/fs/btrfs/file.c b/fs/btrfs/file.c
+--- a/fs/btrfs/file.c
++++ b/fs/btrfs/file.c
+@@ -3818,26 +3818,57 @@
+ 		return -EIO;
+ 
+ 	return filemap_splice_read(in, ppos, pipe, len, flags);
++}
++
++static ssize_t btrfs_user_write_iter(struct kiocb *iocb, struct iov_iter *from)
++{
++	return btrfs_qgroup_user_errno(btrfs_file_write_iter(iocb, from));
+ }
+ 
++static int btrfs_user_sync_file(struct file *file, loff_t start, loff_t end,
++				int datasync)
++{
++	return btrfs_qgroup_user_errno(btrfs_sync_file(file, start, end, datasync));
++}
++
++static long btrfs_user_fallocate(struct file *file, int mode, loff_t offset,
++				 loff_t len)
++{
++	return btrfs_qgroup_user_errno(btrfs_fallocate(file, mode, offset, len));
++}
++
++static loff_t btrfs_user_remap_file_range(struct file *src_file, loff_t off,
++					  struct file *dst_file, loff_t destoff,
++					  loff_t len, unsigned int remap_flags)
++{
++	return btrfs_qgroup_user_errno(btrfs_remap_file_range(src_file, off,
++							      dst_file, destoff,
++							      len, remap_flags));
++}
++
++static int btrfs_user_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
++{
++	return btrfs_qgroup_user_errno(btrfs_uring_cmd(cmd, issue_flags));
++}
++
+ const struct file_operations btrfs_file_operations = {
+ 	.llseek		= btrfs_file_llseek,
+ 	.read_iter      = btrfs_file_read_iter,
+ 	.splice_read	= btrfs_file_splice_read,
+-	.write_iter	= btrfs_file_write_iter,
++	.write_iter	= btrfs_user_write_iter,
+ 	.splice_write	= iter_file_splice_write,
+ 	.mmap_prepare	= btrfs_file_mmap_prepare,
+ 	.open		= btrfs_file_open,
+ 	.release	= btrfs_release_file,
+ 	.get_unmapped_area = thp_get_unmapped_area,
+-	.fsync		= btrfs_sync_file,
+-	.fallocate	= btrfs_fallocate,
+-	.unlocked_ioctl	= btrfs_ioctl,
++	.fsync		= btrfs_user_sync_file,
++	.fallocate	= btrfs_user_fallocate,
++	.unlocked_ioctl	= btrfs_user_ioctl,
+ #ifdef CONFIG_COMPAT
+ 	.compat_ioctl	= btrfs_compat_ioctl,
+ #endif
+-	.remap_file_range = btrfs_remap_file_range,
+-	.uring_cmd	= btrfs_uring_cmd,
++	.remap_file_range = btrfs_user_remap_file_range,
++	.uring_cmd	= btrfs_user_uring_cmd,
+ 	.fop_flags	= FOP_BUFFER_RASYNC | FOP_BUFFER_WASYNC,
+ 	.setlease	= generic_setlease,
+ };
+diff --git a/fs/btrfs/inode.c b/fs/btrfs/inode.c
+--- a/fs/btrfs/inode.c
++++ b/fs/btrfs/inode.c
+@@ -10722,28 +10722,120 @@
+ 	xa_unlock(&root->inodes);
+ 
+ 	return inode;
++}
++
++static int btrfs_user_create(struct mnt_idmap *idmap, struct inode *dir,
++			     struct dentry *dentry, umode_t mode, bool excl)
++{
++	return btrfs_qgroup_user_errno(btrfs_create(idmap, dir, dentry, mode, excl));
++}
++
++static int btrfs_user_unlink(struct inode *dir, struct dentry *dentry)
++{
++	return btrfs_qgroup_user_errno(btrfs_unlink(dir, dentry));
++}
++
++static int btrfs_user_link(struct dentry *old_dentry, struct inode *dir,
++			   struct dentry *dentry)
++{
++	return btrfs_qgroup_user_errno(btrfs_link(old_dentry, dir, dentry));
++}
++
++static struct dentry *btrfs_user_mkdir(struct mnt_idmap *idmap, struct inode *dir,
++				       struct dentry *dentry, umode_t mode)
++{
++	struct dentry *ret = btrfs_mkdir(idmap, dir, dentry, mode);
++
++	if (IS_ERR(ret))
++		return ERR_PTR(btrfs_qgroup_user_errno(PTR_ERR(ret)));
++	return ret;
++}
++
++static int btrfs_user_rmdir(struct inode *dir, struct dentry *dentry)
++{
++	return btrfs_qgroup_user_errno(btrfs_rmdir(dir, dentry));
++}
++
++static int btrfs_user_rename(struct mnt_idmap *idmap, struct inode *old_dir,
++			     struct dentry *old_dentry, struct inode *new_dir,
++			     struct dentry *new_dentry, unsigned int flags)
++{
++	return btrfs_qgroup_user_errno(btrfs_rename2(idmap, old_dir, old_dentry,
++						     new_dir, new_dentry, flags));
++}
++
++static int btrfs_user_symlink(struct mnt_idmap *idmap, struct inode *dir,
++			      struct dentry *dentry, const char *symname)
++{
++	return btrfs_qgroup_user_errno(btrfs_symlink(idmap, dir, dentry, symname));
++}
++
++static int btrfs_user_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
++			      struct iattr *attr)
++{
++	return btrfs_qgroup_user_errno(btrfs_setattr(idmap, dentry, attr));
++}
++
++static int btrfs_user_mknod(struct mnt_idmap *idmap, struct inode *dir,
++			    struct dentry *dentry, umode_t mode, dev_t rdev)
++{
++	return btrfs_qgroup_user_errno(btrfs_mknod(idmap, dir, dentry, mode, rdev));
++}
++
++#ifdef CONFIG_BTRFS_FS_POSIX_ACL
++static int btrfs_user_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
++			      struct posix_acl *acl, int type)
++{
++	return btrfs_qgroup_user_errno(btrfs_set_acl(idmap, dentry, acl, type));
++}
++#else
++#define btrfs_user_set_acl NULL
++#endif
++
++static int btrfs_user_update_time(struct inode *inode, enum fs_update_time type,
++				  unsigned int flags)
++{
++	return btrfs_qgroup_user_errno(btrfs_update_time(inode, type, flags));
+ }
+ 
++static int btrfs_user_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
++			      struct file *file, umode_t mode)
++{
++	return btrfs_qgroup_user_errno(btrfs_tmpfile(idmap, dir, file, mode));
++}
++
++static int btrfs_user_fileattr_set(struct mnt_idmap *idmap, struct dentry *dentry,
++				   struct file_kattr *fa)
++{
++	return btrfs_qgroup_user_errno(btrfs_fileattr_set(idmap, dentry, fa));
++}
++
++static int btrfs_user_sync_dir(struct file *file, loff_t start, loff_t end,
++			       int datasync)
++{
++	return btrfs_qgroup_user_errno(btrfs_sync_file(file, start, end, datasync));
++}
++
+ static const struct inode_operations btrfs_dir_inode_operations = {
+ 	.getattr	= btrfs_getattr,
+ 	.lookup		= btrfs_lookup,
+-	.create		= btrfs_create,
+-	.unlink		= btrfs_unlink,
+-	.link		= btrfs_link,
+-	.mkdir		= btrfs_mkdir,
+-	.rmdir		= btrfs_rmdir,
+-	.rename		= btrfs_rename2,
+-	.symlink	= btrfs_symlink,
+-	.setattr	= btrfs_setattr,
+-	.mknod		= btrfs_mknod,
++	.create		= btrfs_user_create,
++	.unlink		= btrfs_user_unlink,
++	.link		= btrfs_user_link,
++	.mkdir		= btrfs_user_mkdir,
++	.rmdir		= btrfs_user_rmdir,
++	.rename		= btrfs_user_rename,
++	.symlink	= btrfs_user_symlink,
++	.setattr	= btrfs_user_setattr,
++	.mknod		= btrfs_user_mknod,
+ 	.listxattr	= btrfs_listxattr,
+ 	.permission	= btrfs_permission,
+ 	.get_inode_acl	= btrfs_get_acl,
+-	.set_acl	= btrfs_set_acl,
+-	.update_time	= btrfs_update_time,
+-	.tmpfile        = btrfs_tmpfile,
++	.set_acl	= btrfs_user_set_acl,
++	.update_time	= btrfs_user_update_time,
++	.tmpfile        = btrfs_user_tmpfile,
+ 	.fileattr_get	= btrfs_fileattr_get,
+-	.fileattr_set	= btrfs_fileattr_set,
++	.fileattr_set	= btrfs_user_fileattr_set,
+ };
+ 
+ static const struct file_operations btrfs_dir_file_operations = {
+@@ -10751,12 +10843,12 @@
+ 	.read		= generic_read_dir,
+ 	.iterate_shared	= btrfs_real_readdir,
+ 	.open		= btrfs_opendir,
+-	.unlocked_ioctl	= btrfs_ioctl,
++	.unlocked_ioctl	= btrfs_user_ioctl,
+ #ifdef CONFIG_COMPAT
+ 	.compat_ioctl	= btrfs_compat_ioctl,
+ #endif
+ 	.release        = btrfs_release_file,
+-	.fsync		= btrfs_sync_file,
++	.fsync		= btrfs_user_sync_dir,
+ 	.setlease	= generic_setlease,
+ };
+ 
+@@ -10823,32 +10915,32 @@
+ 
+ static const struct inode_operations btrfs_file_inode_operations = {
+ 	.getattr	= btrfs_getattr,
+-	.setattr	= btrfs_setattr,
++	.setattr	= btrfs_user_setattr,
+ 	.listxattr      = btrfs_listxattr,
+ 	.permission	= btrfs_permission,
+ 	.fiemap		= btrfs_fiemap,
+ 	.get_inode_acl	= btrfs_get_acl,
+-	.set_acl	= btrfs_set_acl,
+-	.update_time	= btrfs_update_time,
++	.set_acl	= btrfs_user_set_acl,
++	.update_time	= btrfs_user_update_time,
+ 	.fileattr_get	= btrfs_fileattr_get,
+-	.fileattr_set	= btrfs_fileattr_set,
++	.fileattr_set	= btrfs_user_fileattr_set,
+ };
+ static const struct inode_operations btrfs_special_inode_operations = {
+ 	.getattr	= btrfs_getattr,
+-	.setattr	= btrfs_setattr,
++	.setattr	= btrfs_user_setattr,
+ 	.permission	= btrfs_permission,
+ 	.listxattr	= btrfs_listxattr,
+ 	.get_inode_acl	= btrfs_get_acl,
+-	.set_acl	= btrfs_set_acl,
+-	.update_time	= btrfs_update_time,
++	.set_acl	= btrfs_user_set_acl,
++	.update_time	= btrfs_user_update_time,
+ };
+ static const struct inode_operations btrfs_symlink_inode_operations = {
+ 	.get_link	= page_get_link,
+ 	.getattr	= btrfs_getattr,
+-	.setattr	= btrfs_setattr,
++	.setattr	= btrfs_user_setattr,
+ 	.permission	= btrfs_permission,
+ 	.listxattr	= btrfs_listxattr,
+-	.update_time	= btrfs_update_time,
++	.update_time	= btrfs_user_update_time,
+ };
+ 
+ const struct dentry_operations btrfs_dentry_operations = {
+diff --git a/fs/btrfs/ioctl.c b/fs/btrfs/ioctl.c
+--- a/fs/btrfs/ioctl.c
++++ b/fs/btrfs/ioctl.c
+@@ -5658,7 +5658,24 @@
+ 
+ 	return -ENOTTY;
+ }
++
++long btrfs_user_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
++{
++	const long ret = btrfs_ioctl(file, cmd, arg);
+ 
++	switch (cmd) {
++	case BTRFS_IOC_QUOTA_CTL:
++	case BTRFS_IOC_QGROUP_ASSIGN:
++	case BTRFS_IOC_QGROUP_CREATE:
++	case BTRFS_IOC_QGROUP_LIMIT:
++	case BTRFS_IOC_QUOTA_RESCAN:
++	case BTRFS_IOC_QUOTA_RESCAN_STATUS:
++	case BTRFS_IOC_QUOTA_RESCAN_WAIT:
++		return ret;
++	}
++	return btrfs_qgroup_user_errno(ret);
++}
++
+ #ifdef CONFIG_COMPAT
+ long btrfs_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+ {
+@@ -5672,6 +5689,6 @@
+ 		break;
+ 	}
+ 
+-	return btrfs_ioctl(file, cmd, (unsigned long) compat_ptr(arg));
++	return btrfs_user_ioctl(file, cmd, (unsigned long) compat_ptr(arg));
+ }
+ #endif
+diff --git a/fs/btrfs/ioctl.h b/fs/btrfs/ioctl.h
+--- a/fs/btrfs/ioctl.h
++++ b/fs/btrfs/ioctl.h
+@@ -15,6 +15,7 @@
+ struct btrfs_ioctl_balance_args;
+ 
+ long btrfs_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
++long btrfs_user_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+ long btrfs_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+ int btrfs_fileattr_get(struct dentry *dentry, struct file_kattr *fa);
+ int btrfs_fileattr_set(struct mnt_idmap *idmap,
+diff --git a/fs/btrfs/qgroup.c b/fs/btrfs/qgroup.c
+--- a/fs/btrfs/qgroup.c
++++ b/fs/btrfs/qgroup.c
+@@ -3663,6 +3663,11 @@
+ 	return ret;
+ }
+ 
++bool btrfs_qgroup_limit_enospc = true;
++module_param_named(qgroup_limit_enospc, btrfs_qgroup_limit_enospc, bool, 0644);
++MODULE_PARM_DESC(qgroup_limit_enospc,
++		 "a qgroup limit is reported to the caller of a system call as ENOSPC, not EDQUOT (default: Y)");
++
+ static bool btrfs_statfs_qgroup_limit = true;
+ module_param_named(statfs_qgroup_limit, btrfs_statfs_qgroup_limit, bool, 0644);
+ MODULE_PARM_DESC(statfs_qgroup_limit,
+diff --git a/fs/btrfs/qgroup.h b/fs/btrfs/qgroup.h
+--- a/fs/btrfs/qgroup.h
++++ b/fs/btrfs/qgroup.h
+@@ -327,7 +327,16 @@
+ 	BTRFS_QGROUP_MODE_FULL,
+ 	BTRFS_QGROUP_MODE_SIMPLE
+ };
++
++extern bool btrfs_qgroup_limit_enospc;
+ 
++static inline long btrfs_qgroup_user_errno(long ret)
++{
++	if (unlikely(ret == -EDQUOT) && READ_ONCE(btrfs_qgroup_limit_enospc))
++		return -ENOSPC;
++	return ret;
++}
++
+ enum btrfs_qgroup_mode btrfs_qgroup_mode(const struct btrfs_fs_info *fs_info);
+ bool btrfs_qgroup_enabled(const struct btrfs_fs_info *fs_info);
+ bool btrfs_qgroup_full_accounting(const struct btrfs_fs_info *fs_info);
+diff --git a/fs/btrfs/xattr.c b/fs/btrfs/xattr.c
+--- a/fs/btrfs/xattr.c
++++ b/fs/btrfs/xattr.c
+@@ -18,6 +18,7 @@
+ #include "btrfs_inode.h"
+ #include "transaction.h"
+ #include "xattr.h"
++#include "qgroup.h"
+ #include "disk-io.h"
+ #include "props.h"
+ #include "locking.h"
+@@ -446,30 +447,61 @@
+ 	btrfs_end_transaction(trans);
+ 
+ 	return ret;
++}
++
++static int btrfs_user_xattr_set(const struct xattr_handler *handler,
++				struct mnt_idmap *idmap,
++				struct dentry *unused, struct inode *inode,
++				const char *name, const void *buffer,
++				size_t size, int flags)
++{
++	return btrfs_qgroup_user_errno(btrfs_xattr_handler_set(handler, idmap,
++				unused, inode, name, buffer, size, flags));
++}
++
++static int btrfs_user_xattr_set_security(const struct xattr_handler *handler,
++					 struct mnt_idmap *idmap,
++					 struct dentry *unused,
++					 struct inode *inode, const char *name,
++					 const void *buffer, size_t size,
++					 int flags)
++{
++	return btrfs_qgroup_user_errno(btrfs_xattr_handler_set_security(handler,
++				idmap, unused, inode, name, buffer, size, flags));
+ }
+ 
++static int btrfs_user_xattr_set_prop(const struct xattr_handler *handler,
++				     struct mnt_idmap *idmap,
++				     struct dentry *unused, struct inode *inode,
++				     const char *name, const void *value,
++				     size_t size, int flags)
++{
++	return btrfs_qgroup_user_errno(btrfs_xattr_handler_set_prop(handler,
++				idmap, unused, inode, name, value, size, flags));
++}
++
+ static const struct xattr_handler btrfs_security_xattr_handler = {
+ 	.prefix = XATTR_SECURITY_PREFIX,
+ 	.get = btrfs_xattr_handler_get_security,
+-	.set = btrfs_xattr_handler_set_security,
++	.set = btrfs_user_xattr_set_security,
+ };
+ 
+ static const struct xattr_handler btrfs_trusted_xattr_handler = {
+ 	.prefix = XATTR_TRUSTED_PREFIX,
+ 	.get = btrfs_xattr_handler_get,
+-	.set = btrfs_xattr_handler_set,
++	.set = btrfs_user_xattr_set,
+ };
+ 
+ static const struct xattr_handler btrfs_user_xattr_handler = {
+ 	.prefix = XATTR_USER_PREFIX,
+ 	.get = btrfs_xattr_handler_get,
+-	.set = btrfs_xattr_handler_set,
++	.set = btrfs_user_xattr_set,
+ };
+ 
+ static const struct xattr_handler btrfs_btrfs_xattr_handler = {
+ 	.prefix = XATTR_BTRFS_PREFIX,
+ 	.get = btrfs_xattr_handler_get,
+-	.set = btrfs_xattr_handler_set_prop,
++	.set = btrfs_user_xattr_set_prop,
+ };
+ 
+ const struct xattr_handler * const btrfs_xattr_handlers[] = {

@@ -1,0 +1,21 @@
+{
+  "method": "machine.stop",
+  "params": {
+    "name": "f43"
+  },
+  "result": {
+    "name": "f43",
+    "state": "stopped",
+    "image": {
+      "distro": "fedora",
+      "release": "43",
+      "arch": "arm64",
+      "variant": "default",
+      "serial": "20261014_20:33"
+    },
+    "uuid": "c9f0f895-fb98-4b91-9f3e-2a1d6c7e8b20",
+    "init": "systemd",
+    "disk_bytes": 402653184,
+    "last_exit": "stopped"
+  }
+}

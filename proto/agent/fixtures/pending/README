@@ -1,0 +1,4 @@
+Examples of methods in pending.go's Pending, and of what a later change
+adds to built methods before an agent gives it. Each moves to fixtures/ with the change
+that serves it. Empty when nothing is pending; this file keeps the
+directory, which pending.go embeds.

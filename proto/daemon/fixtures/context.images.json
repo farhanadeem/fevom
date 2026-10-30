@@ -1,0 +1,21 @@
+{
+  "method": "context.images",
+  "params": {
+    "context": "work-remote"
+  },
+  "result": {
+    "images": [
+      {
+        "id": "sha256:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+        "repo_tags": ["ghcr.io/example/api:latest"],
+        "size": 184221900,
+        "created": 1760000000
+      },
+      {
+        "id": "sha256:b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1",
+        "size": 7340032,
+        "created": 1759000000
+      }
+    ]
+  }
+}

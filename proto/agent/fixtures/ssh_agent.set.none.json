@@ -1,0 +1,10 @@
+{
+  "method": "ssh_agent.set",
+  "params": {
+    "path": ""
+  },
+  "result": {
+    "engine": false,
+    "machines": []
+  }
+}

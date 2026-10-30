@@ -1,0 +1,16 @@
+state: running, ready
+node: fev, v1.37.1+k3s1
+api: https://127.0.0.1:6443
+kubeconfig: /Users/tester/.kube/config, context fev (current)
+ranges: load balancers 198.19.8.0/22, pods 198.19.16.0/20, services 198.19.32.0/20, dns 198.19.32.10
+cluster.local: answered on this Mac
+services:
+  NAME                TYPE          ADDRESS      PORTS         URLS
+  default/kubernetes  ClusterIP     198.19.32.1  443/tcp
+  default/web         LoadBalancer  198.19.8.1   80:30080/tcp  https://web.k8s.fev.local http://localhost:30080 http://198.19.32.141
+ingresses:
+  NAME          HOSTS               ADDRESS     URLS
+  default/shop  shop.k8s.fev.local  198.19.8.2  https://shop.k8s.fev.local
+kubelet: maxPods (kubernetes.kubelet)
+images: downloaded, 419.8 MiB (kept by a reset; "fev k8s reset --all" deletes them)
+cost: Kubernetes uses about a tenth of a core and 2 GiB of memory while on

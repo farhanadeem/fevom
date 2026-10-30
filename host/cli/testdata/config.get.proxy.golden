@@ -1,0 +1,2 @@
+network.proxy: http://ada:xxxxx@proxy.corp.example:3128
+network.proxy_exclude: ["registry.local",".corp.example","10.20.0.0/16"]

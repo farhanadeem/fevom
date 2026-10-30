@@ -1,0 +1,14 @@
+{
+  "method": "data.reset",
+  "params": {},
+  "result": {
+    "freed_bytes": 1495040,
+    "status": {
+      "seq": 14,
+      "state": "stopped",
+      "engine": "stopped",
+      "since": "2026-10-08T12:10:00Z",
+      "pending_restart": []
+    }
+  }
+}

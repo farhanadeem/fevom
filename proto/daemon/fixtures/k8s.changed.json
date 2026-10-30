@@ -1,0 +1,37 @@
+{
+  "method": "k8s.changed",
+  "notification": true,
+  "params": {
+    "subscription": 7,
+    "type": "modified",
+    "object": {
+      "kind": "Pod",
+      "namespace": "default",
+      "name": "web-7c9d8b6f5-x2kqz",
+      "uid": "9e2a7b1c-3d4f-4a5b-8c6d-7e8f9a0b1c2d",
+      "created": "2026-10-23T21:01:01Z",
+      "resource_version": "1211",
+      "labels": {
+        "app": "web",
+        "pod-template-hash": "7c9d8b6f5"
+      },
+      "pod": {
+        "phase": "Running",
+        "ready": false,
+        "restarts": 1,
+        "node": "fev",
+        "ip": "198.19.16.8",
+        "containers": [
+          {
+            "name": "web",
+            "image": "web:dev",
+            "ready": false,
+            "restarts": 1,
+            "state": "waiting"
+          }
+        ],
+        "reason": "CrashLoopBackOff"
+      }
+    }
+  }
+}

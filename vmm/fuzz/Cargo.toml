@@ -1,0 +1,107 @@
+[package]
+name = "fevvm-fuzz"
+version = "0.0.0"
+edition = "2021"
+license-file = "../../LICENSE"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+fevvm = { path = "../fevvm", features = ["fuzzing"] }
+fileshare = { path = "../fileshare", features = ["testing"] }
+libfuzzer-sys = "0.4"
+
+[workspace]
+
+[[bin]]
+name = "queue"
+path = "fuzz_targets/queue.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "blk"
+path = "fuzz_targets/blk.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "console"
+path = "fuzz_targets/console.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rng"
+path = "fuzz_targets/rng.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "transport"
+path = "fuzz_targets/transport.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "exit"
+path = "fuzz_targets/exit.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vsock"
+path = "fuzz_targets/vsock.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "net"
+path = "fuzz_targets/net.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "balloon"
+path = "fuzz_targets/balloon.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fs"
+path = "fuzz_targets/fs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuse"
+path = "fuzz_targets/fuse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fsevents"
+path = "fuzz_targets/fsevents.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "control"
+path = "fuzz_targets/control.rs"
+test = false
+doc = false
+bench = false

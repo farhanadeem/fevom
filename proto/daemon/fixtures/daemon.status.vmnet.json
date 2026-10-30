@@ -1,0 +1,34 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 9,
+    "state": "running",
+    "engine": "ready",
+    "boot_id": "e81a08",
+    "since": "2026-10-17T21:10:00Z",
+    "pending_restart": [],
+    "network": {
+      "subnet": "198.19.0.0/16",
+      "direct_access": "on",
+      "interface": "bridge101",
+      "routes": ["198.19.0.0/24", "198.19.2.0/24", "198.19.4.0/22", "198.19.64.0/18", "198.19.128.0/18"],
+      "via": "vmnet",
+      "no_helper": "no_helper"
+    },
+    "domains": {
+      "resolver": "absent",
+      "port": 0,
+      "names": 2,
+      "local": [
+        {"name": "shop-custom.local", "container": "api", "state": "mdns"}
+      ],
+      "mdns": "bridge101"
+    },
+    "https": {
+      "enabled": true,
+      "trust": "absent",
+      "key": "none"
+    }
+  }
+}

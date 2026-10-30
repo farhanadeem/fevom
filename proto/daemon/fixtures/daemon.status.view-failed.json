@@ -1,0 +1,19 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 21,
+    "state": "running",
+    "engine": "ready",
+    "boot_id": "a3f9c2",
+    "since": "2026-10-18T09:12:30.2Z",
+    "pending_restart": [],
+    "view": {
+      "state": "failed",
+      "path": "/Users/someone/Fevom",
+      "socket": "/Users/someone/.fev/run/view.sock",
+      "hidden": false,
+      "error": "/Users/someone/Fevom holds files of its own (notes.txt): fev shows its view there; move them, and fev mounts it at the next start"
+    }
+  }
+}

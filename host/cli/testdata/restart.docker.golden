@@ -1,0 +1,3 @@
+engine: ready
+socket: /Users/someone/.fev/run/docker.sock
+engine configuration: /Users/someone/.fev/config/docker.json (refused: unable to configure the Docker daemon with file /run/fev/daemon.json: the following directives don't match any configuration option: default-adress-pools)

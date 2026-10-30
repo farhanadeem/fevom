@@ -1,0 +1,18 @@
+{
+  "method": "storage.budget",
+  "params": {
+    "available_bytes": 0,
+    "margin_bytes": 0,
+    "image_bytes": 0,
+    "unlimited": true
+  },
+  "result": {
+    "limited": false,
+    "limit_bytes": 0,
+    "budget_bytes": 0,
+    "referenced_bytes": 3221225472,
+    "reserved_bytes": 0,
+    "used_bytes": 3305111552,
+    "duration_ms": 0.3
+  }
+}

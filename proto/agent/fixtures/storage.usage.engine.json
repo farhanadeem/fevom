@@ -1,0 +1,34 @@
+{
+  "method": "storage.usage",
+  "params": {
+    "engine": true
+  },
+  "result": {
+    "used_bytes": 6442450944,
+    "machines": [
+      {
+        "name": "dev",
+        "disk_bytes": 1288490188
+      },
+      {
+        "name": "f43",
+        "disk_bytes": 402653184
+      }
+    ],
+    "images_bytes": 1010827264,
+    "engine_bytes": 3221225472,
+    "engine": {
+      "images_bytes": 2147483648,
+      "containers_bytes": 104857600,
+      "volumes_bytes": 838860800,
+      "build_cache_bytes": 130023424
+    },
+    "kubernetes": {
+      "bytes": 1076371456,
+      "cluster_bytes": 23789568,
+      "cache_bytes": 440213504,
+      "images_bytes": 612368384,
+      "images_counted": true
+    }
+  }
+}

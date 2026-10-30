@@ -1,0 +1,4 @@
+fev: k8s start: downloading Kubernetes (250 MB, once)
+fev: k8s start: checking the download and unpacking k3s
+fev: k8s start: importing the images
+fev: k8s start: starting the cluster

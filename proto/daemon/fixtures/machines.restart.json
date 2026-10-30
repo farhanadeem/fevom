@@ -1,0 +1,22 @@
+{
+  "method": "machines.restart",
+  "params": {
+    "name": "f43",
+    "grace_ms": 5000
+  },
+  "result": {
+    "name": "f43",
+    "state": "running",
+    "image": {
+      "distro": "fedora",
+      "release": "43",
+      "arch": "arm64",
+      "variant": "default",
+      "serial": "20261014_20:33"
+    },
+    "user": "ada",
+    "address": "198.19.0.11",
+    "disk_size": 402653184,
+    "since": "2026-10-14T10:05:03Z"
+  }
+}

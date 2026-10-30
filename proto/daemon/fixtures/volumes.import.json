@@ -1,0 +1,15 @@
+{
+  "method": "volumes.import",
+  "params": {
+    "path": "/Users/ada/Backups/pgdata.tar.zst",
+    "name": "pgdata2"
+  },
+  "result": {
+    "id": "op-20261019T101600-8",
+    "method": "volumes.import",
+    "target": "pgdata2",
+    "state": "running",
+    "phase": "archive",
+    "started": "2026-10-19T10:16:00Z"
+  }
+}

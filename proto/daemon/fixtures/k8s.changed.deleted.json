@@ -1,0 +1,40 @@
+{
+  "method": "k8s.changed",
+  "notification": true,
+  "params": {
+    "subscription": 7,
+    "type": "deleted",
+    "object": {
+      "kind": "Service",
+      "namespace": "default",
+      "name": "web",
+      "uid": "7f6e5d4c-3b2a-4190-8a7b-6c5d4e3f2a1b",
+      "created": "2026-10-23T21:01:00Z",
+      "resource_version": "1180",
+      "service": {
+        "namespace": "default",
+        "name": "web",
+        "type": "LoadBalancer",
+        "cluster_ip": "198.19.32.141",
+        "load_balancer": "198.19.8.1",
+        "ports": [
+          {
+            "name": "http",
+            "protocol": "TCP",
+            "port": 80,
+            "node_port": 30080
+          }
+        ],
+        "names": [
+          "web.default.k8s.fev.local",
+          "web.k8s.fev.local"
+        ],
+        "urls": [
+          "https://web.k8s.fev.local",
+          "http://localhost:30080",
+          "http://198.19.32.141"
+        ]
+      }
+    }
+  }
+}

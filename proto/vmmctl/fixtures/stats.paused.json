@@ -1,0 +1,32 @@
+{
+  "method": "stats",
+  "params": {},
+  "result": {
+    "api_version": 1,
+    "build": "be3f324",
+    "state": "paused",
+    "at_ns": 2012830000500000,
+    "pauses": 1,
+    "total_offset_ns": 0,
+    "paused_at_ns": 2012830000000000,
+    "resets": 0,
+    "vcpus": [
+      {
+        "cpu_ns": 1840000000,
+        "exits": 51235
+      },
+      {
+        "cpu_ns": 920000000,
+        "exits": 30113
+      }
+    ],
+    "memory": {
+      "guest_bytes": 8589934592,
+      "footprint_bytes": 674234368,
+      "resident_bytes": 612368384,
+      "compressed_bytes": 0,
+      "released_bytes": 3659530240,
+      "released_ranges": 1745
+    }
+  }
+}

@@ -1,0 +1,5 @@
+state: running
+engine: ready
+since: 2026-10-18T09:12:30.2Z
+boot: a3f9c2
+x86 emulation: on: x86-64 and i386 Linux programs run through FEX-Emu FEX-2610, with the CPU's memory ordering

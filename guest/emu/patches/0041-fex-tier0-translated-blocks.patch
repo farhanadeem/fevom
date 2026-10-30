@@ -1,0 +1,19 @@
+diff --git a/FEXCore/Source/Interface/Core/Tier0/Tier0.cpp b/FEXCore/Source/Interface/Core/Tier0/Tier0.cpp
+--- a/FEXCore/Source/Interface/Core/Tier0/Tier0.cpp
++++ b/FEXCore/Source/Interface/Core/Tier0/Tier0.cpp
+@@ -1895,7 +1895,14 @@
+   if (!FirstSlot && St) {
+     St->Full++;
+   }
+-  const u32 First = Bump(FirstSlot, EntryWeight) & COUNT_MASK;
++  const u32 FirstRaw = Bump(FirstSlot, EntryWeight);
++  const u32 First = FirstRaw & COUNT_MASK;
++  if (FirstRaw & COMPILED_BIT) {
++    if (St) {
++      St->Found++;
++    }
++    return {0, RIP, false};
++  }
+   if (First > T) {
+     if (St) {
+       St->Hot++;

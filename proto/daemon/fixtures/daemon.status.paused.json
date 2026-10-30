@@ -1,0 +1,13 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 31,
+    "state": "paused",
+    "pause_reason": "sleep",
+    "engine": "ready",
+    "boot_id": "c40d19",
+    "since": "2026-10-10T22:14:03.512Z",
+    "pending_restart": []
+  }
+}

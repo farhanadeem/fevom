@@ -1,0 +1,10 @@
+{
+  "method": "storage.trim",
+  "params": {
+    "min_len_bytes": 65536
+  },
+  "result": {
+    "trimmed_bytes": 10737418240,
+    "duration_ms": 412.5
+  }
+}

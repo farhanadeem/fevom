@@ -1,0 +1,48 @@
+[
+  {
+    "path": "/etc/hosts",
+    "when": [
+      "create",
+      "copy"
+    ],
+    "template": "127.0.1.1\t{{ container.name }}\n# Loopback entries; do not change.\n# For historical reasons, localhost precedes localhost.localdomain:\n127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4\n::1         localhost localhost.localdomain localhost6 localhost6.localdomain6\n# See hosts(5) for proper format and other examples:\n# 192.168.1.10 foo.example.org foo\n# 192.168.1.13 bar.example.org bar\n"
+  },
+  {
+    "path": "/var/lib/cloud/seed/nocloud-net/meta-data",
+    "when": [
+      "create",
+      "copy"
+    ],
+    "template": "instance-id: {{ container.name }}\nlocal-hostname: {{ container.name }}\n{{ config_get(\"user.meta-data\", \"\") }}\n"
+  },
+  {
+    "path": "/var/lib/cloud/seed/nocloud-net/network-config",
+    "when": [
+      "create",
+      "copy"
+    ],
+    "template": "{%- if config_get(\"cloud-init.network-config\", \"\") == \"\" -%}\n{%- if config_get(\"user.network-config\", \"\") == \"\" -%}\n{% if config_get(\"user.network-config\", \"\") == \"\" %}version: 1\nconfig:\n  - type: physical\n    name: {% if instance.type == \"virtual-machine\" %}enp5s0{% else %}eth0{% endif %}\n    subnets:\n      - type: {% if config_get(\"user.network_mode\", \"\") == \"link-local\" %}manual{% else %}dhcp{% endif %}\n        control: auto\n      - type: dhcp6\n        control: auto{% else %}{{ config_get(\"user.network-config\", \"\") }}{% endif %}\n{%- else -%}\n{{- config_get(\"user.network-config\", \"\") -}}\n{%- endif -%}\n{%- else -%}\n{{- config_get(\"cloud-init.network-config\", \"\") -}}\n{%- endif %}\n"
+  },
+  {
+    "path": "/var/lib/cloud/seed/nocloud-net/user-data",
+    "when": [
+      "create",
+      "copy"
+    ],
+    "template": "{%- if config_get(\"cloud-init.user-data\", properties.default) == properties.default -%}\n{{ config_get(\"user.user-data\", properties.default) }}\n{%- else -%}\n{{- config_get(\"cloud-init.user-data\", properties.default) }}\n{%- endif %}\n",
+    "properties": {
+      "default": "#cloud-config\n{}"
+    }
+  },
+  {
+    "path": "/var/lib/cloud/seed/nocloud-net/vendor-data",
+    "when": [
+      "create",
+      "copy"
+    ],
+    "template": "{%- if config_get(\"cloud-init.vendor-data\", properties.default) == properties.default -%}\n{{ config_get(\"user.vendor-data\", properties.default) }}\n{%- else -%}\n{{- config_get(\"cloud-init.vendor-data\", properties.default) }}\n{%- endif %}\n",
+    "properties": {
+      "default": "#cloud-config\n{}"
+    }
+  }
+]

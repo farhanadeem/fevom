@@ -1,0 +1,11 @@
+{
+  "method": "budget",
+  "params": {
+    "available_bytes": 1073741824,
+    "image_bytes": 21474836480,
+    "margin_bytes": 5368709120
+  },
+  "result": {
+    "held_requests": 3
+  }
+}

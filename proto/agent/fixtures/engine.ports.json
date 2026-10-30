@@ -1,0 +1,13 @@
+{
+  "method": "engine.ports",
+  "params": {},
+  "result": {
+    "address": "127.0.0.1",
+    "seq": 7,
+    "ports": [
+      {"proto": "tcp", "address": "0.0.0.0", "port": 18555},
+      {"proto": "tcp", "address": "::", "port": 9229},
+      {"proto": "udp", "address": "0.0.0.0", "port": 5005}
+    ]
+  }
+}

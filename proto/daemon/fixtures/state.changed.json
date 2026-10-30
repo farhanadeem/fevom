@@ -1,0 +1,17 @@
+{
+  "method": "state.changed",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "status": {
+      "seq": 8,
+      "state": "starting",
+      "phase": "kernel",
+      "engine": "stopped",
+      "boot_id": "b3f1c2",
+      "since": "2026-10-08T12:00:00.016Z",
+      "fake": true,
+      "pending_restart": []
+    }
+  }
+}

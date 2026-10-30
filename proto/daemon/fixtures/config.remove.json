@@ -1,0 +1,9 @@
+{
+  "method": "config.remove",
+  "params": {"key": "network.proxy_exclude", "values": ["10.20.0.0/16"]},
+  "result": {
+    "changed": [
+      {"key": "network.proxy_exclude", "value": ["registry.local", ".corp.example"], "apply": "live"}
+    ]
+  }
+}

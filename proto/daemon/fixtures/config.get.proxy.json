@@ -1,0 +1,10 @@
+{
+  "method": "config.get",
+  "params": {"keys": ["network.proxy", "network.proxy_exclude"]},
+  "result": {
+    "values": {
+      "network.proxy": {"value": "http://ada:xxxxx@proxy.corp.example:3128"},
+      "network.proxy_exclude": {"value": ["registry.local", ".corp.example", "10.20.0.0/16"]}
+    }
+  }
+}

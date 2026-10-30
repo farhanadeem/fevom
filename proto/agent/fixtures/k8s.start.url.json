@@ -1,0 +1,12 @@
+{
+  "method": "k8s.start",
+  "params": {
+    "archive_url": "file:///Users/tester/k3s/airgap.tar.zst",
+    "config": {
+      "metrics_server": true
+    }
+  },
+  "result": {
+    "id": 313
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "method": "fileshare.bind",
+  "params": {},
+  "result": {
+    "bound": [
+      "/opt/homebrew"
+    ],
+    "unbound": []
+  }
+}

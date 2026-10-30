@@ -1,0 +1,14 @@
+{
+  "method": "view.changed",
+  "notification": true,
+  "params": {
+    "state": "ready",
+    "since": "2026-10-17T08:12:03.391Z",
+    "objects": {
+      "machines": 2,
+      "volumes": 3,
+      "containers": 4,
+      "images": 0
+    }
+  }
+}

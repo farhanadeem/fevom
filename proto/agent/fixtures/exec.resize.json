@@ -1,0 +1,9 @@
+{
+  "method": "exec.resize",
+  "params": {
+    "id": 7,
+    "rows": 50,
+    "cols": 132
+  },
+  "result": {}
+}

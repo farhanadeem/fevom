@@ -1,0 +1,5 @@
+{
+  "method": "dockersock.link",
+  "params": {},
+  "result": {"state": "fevs", "target": "/Users/ada/.fev/run/docker.sock"}
+}

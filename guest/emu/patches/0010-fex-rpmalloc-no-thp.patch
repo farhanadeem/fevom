@@ -1,0 +1,14 @@
+diff --git a/External/rpmalloc/rpmalloc/rpmalloc.c b/External/rpmalloc/rpmalloc/rpmalloc.c
+--- a/External/rpmalloc/rpmalloc/rpmalloc.c
++++ b/External/rpmalloc/rpmalloc/rpmalloc.c
+@@ -818,6 +818,10 @@
+ 			rpmalloc_assert((prm == 0), "Failed to promote the page to transparent huge page");
+ 		}
+ 	}
++#endif
++#if defined(MADV_NOHUGEPAGE)
++	if (ptr && ptr != MAP_FAILED && !os_huge_pages)
++		(void)madvise(ptr, map_size, MADV_NOHUGEPAGE);
+ #endif
+ 	os_set_page_name(ptr, map_size);
+ #elif defined(MAP_ALIGNED)

@@ -1,0 +1,38 @@
+{
+  "method": "stats",
+  "params": {},
+  "result": {
+    "api_version": 1,
+    "build": "be3f324",
+    "state": "stopping",
+    "at_ns": 2012861000000000,
+    "pauses": 1,
+    "total_offset_ns": 30000250000,
+    "resets": 1,
+    "vcpus": [],
+    "memory": {
+      "guest_bytes": 2147483648,
+      "footprint_bytes": 0,
+      "resident_bytes": 0,
+      "compressed_bytes": 0,
+      "released_bytes": 0,
+      "released_ranges": 0
+    },
+    "windows": {
+      "data_disk": {
+        "state": "failed",
+        "reason": "mmap: Cannot allocate memory",
+        "size_bytes": 0
+      },
+      "file_share": {
+        "state": "on",
+        "size_bytes": 4294967296,
+        "guest_addr": 137438953472,
+        "mappings": 397000,
+        "unmappings": 396200,
+        "live": 800,
+        "faults": 12
+      }
+    }
+  }
+}

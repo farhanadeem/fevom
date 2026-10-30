@@ -1,0 +1,17 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "operation": {
+      "id": "op-20261023T210000-1",
+      "method": "k8s.enable",
+      "target": "kubernetes",
+      "state": "running",
+      "phase": "fetching",
+      "started": "2026-10-23T21:00:00Z",
+      "done_bytes": 84017152,
+      "total_bytes": 250217791
+    }
+  }
+}

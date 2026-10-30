@@ -1,0 +1,11 @@
+name: dev
+state: running
+distro: ubuntu
+version: noble
+arch: arm64
+variant: cloud
+build: 20261014_07:42
+user: ada
+default: yes
+address: 198.19.0.10
+disk usage: 1.0 GiB

@@ -1,0 +1,13 @@
+{
+  "method": "store.search",
+  "params": {
+    "text": "json",
+    "limit": 20
+  },
+  "result": {
+    "matches": [
+      {"command": "jq", "attr": "jq", "name": "jq-1.8.1", "license": "MIT License"},
+      {"command": "jo", "attr": "jo", "name": "jo-1.9", "license": "GNU General Public License v2.0 or later"}
+    ]
+  }
+}

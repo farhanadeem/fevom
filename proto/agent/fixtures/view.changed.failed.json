@@ -1,0 +1,9 @@
+{
+  "method": "view.changed",
+  "notification": true,
+  "params": {
+    "state": "failed",
+    "error": "nfsd: /proc/fs/nfsd/portlist: address in use",
+    "since": "2026-10-17T08:12:03.600Z"
+  }
+}

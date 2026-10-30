@@ -1,0 +1,77 @@
+diff --git a/net/vmw_vsock/virtio_transport_common.c b/net/vmw_vsock/virtio_transport_common.c
+--- a/net/vmw_vsock/virtio_transport_common.c
++++ b/net/vmw_vsock/virtio_transport_common.c
+@@ -77,6 +77,36 @@
+ 	return true;
+ }
+ 
++static size_t virtio_transport_bvec_fit(const struct iov_iter *iter,
++					size_t max)
++{
++	const struct bio_vec *bv = iter->bvec;
++	size_t skip = iter->iov_offset;
++	unsigned long nr = iter->nr_segs;
++	size_t n = 0;
++	int frags = 0;
++
++	for (; nr && n < max; bv++, nr--) {
++		size_t len = bv->bv_len - skip;
++		size_t off = bv->bv_offset + skip;
++
++		skip = 0;
++		while (len && n < max) {
++			size_t take = min_t(size_t, len,
++					    PAGE_SIZE - offset_in_page(off));
++
++			if (frags == MAX_SKB_FRAGS)
++				return n;
++			frags++;
++			take = min(take, max - n);
++			n += take;
++			len -= take;
++			off += take;
++		}
++	}
++	return n;
++}
++
+ static int virtio_transport_fill_skb(struct sk_buff *skb,
+ 				     struct virtio_vsock_pkt_info *info,
+ 				     size_t len,
+@@ -306,6 +336,7 @@
+ 	struct ubuf_info *uarg = NULL;
+ 	u32 pkt_len = info->pkt_len;
+ 	bool can_zcopy = false;
++	bool splice = false;
+ 	bool have_uref = false;
+ 	u32 rest_len;
+ 	int ret;
+@@ -343,7 +374,13 @@
+ 			info->msg->msg_flags &= ~MSG_ZEROCOPY;
+ 
+ 		if (info->msg->msg_flags & MSG_ZEROCOPY)
++			can_zcopy = virtio_transport_can_zcopy(t_ops, info, pkt_len);
++		else if ((info->msg->msg_flags & MSG_SPLICE_PAGES) &&
++			 iov_iter_is_bvec(&info->msg->msg_iter) &&
++			 info->op == VIRTIO_VSOCK_OP_RW) {
+ 			can_zcopy = virtio_transport_can_zcopy(t_ops, info, pkt_len);
++			splice = can_zcopy;
++		}
+ 
+ 		if (can_zcopy)
+ 			max_skb_len = min_t(u32, VIRTIO_VSOCK_MAX_PKT_BUF_SIZE,
+@@ -376,6 +413,14 @@
+ 		size_t skb_len;
+ 
+ 		skb_len = min(max_skb_len, rest_len);
++		if (splice) {
++			skb_len = virtio_transport_bvec_fit(&info->msg->msg_iter,
++							    skb_len);
++			if (!skb_len) {
++				ret = -EMSGSIZE;
++				break;
++			}
++		}
+ 
+ 		skb = virtio_transport_alloc_skb(info, skb_len, can_zcopy,
+ 						 uarg,

@@ -1,0 +1,14 @@
+{
+  "method": "fileshare.state",
+  "notification": true,
+  "params": {
+    "tag": "mac",
+    "target": "/mnt/mac",
+    "device": true,
+    "feed": "connected",
+    "watching": 0,
+    "records": 0,
+    "refused": 0,
+    "invalidations": 0
+  }
+}

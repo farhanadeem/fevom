@@ -1,0 +1,4 @@
+Kubernetes is running.
+Added context fev to /Users/tester/.kube/config.
+kubectl --context fev get nodes
+Kubernetes uses about a tenth of a core and 2 GiB of memory while on.

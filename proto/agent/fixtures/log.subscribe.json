@@ -1,0 +1,12 @@
+{
+  "method": "log.subscribe",
+  "params": {
+    "sources": [
+      "kernel"
+    ],
+    "backlog": true
+  },
+  "result": {
+    "subscription": 3
+  }
+}

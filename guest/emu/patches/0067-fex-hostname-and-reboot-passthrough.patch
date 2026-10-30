@@ -1,0 +1,26 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/NotImplemented.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/NotImplemented.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/NotImplemented.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/NotImplemented.cpp
+@@ -42,9 +42,6 @@
+   REGISTER_SYSCALL_NOT_IMPL(_sysctl); // Was removed in Linux 5.5
+ 
+   REGISTER_SYSCALL_NO_PERM(vhangup);
+-  REGISTER_SYSCALL_NO_PERM(reboot)
+-  REGISTER_SYSCALL_NO_PERM(sethostname);
+-  REGISTER_SYSCALL_NO_PERM(setdomainname);
+   REGISTER_SYSCALL_NO_PERM(kexec_load);
+   REGISTER_SYSCALL_NO_PERM(finit_module);
+   REGISTER_SYSCALL_NO_PERM(bpf);
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Passthrough.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Passthrough.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Passthrough.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Passthrough.cpp
+@@ -280,6 +280,9 @@
+   REGISTER_SYSCALL_IMPL(mlock, SyscallPassthrough2<SYSCALL_DEF(mlock)>);
+   REGISTER_SYSCALL_IMPL(munlock, SyscallPassthrough2<SYSCALL_DEF(munlock)>);
+   REGISTER_SYSCALL_IMPL(pivot_root, SyscallPassthrough2<SYSCALL_DEF(pivot_root)>);
++  REGISTER_SYSCALL_IMPL(sethostname, SyscallPassthrough2<SYSCALL_DEF(sethostname)>);
++  REGISTER_SYSCALL_IMPL(setdomainname, SyscallPassthrough2<SYSCALL_DEF(setdomainname)>);
++  REGISTER_SYSCALL_IMPL(reboot, SyscallPassthrough4<SYSCALL_DEF(reboot)>);
+   REGISTER_SYSCALL_IMPL(chroot, SyscallPassthrough1<SYSCALL_DEF(chroot)>);
+   REGISTER_SYSCALL_IMPL(sync, SyscallPassthrough0<SYSCALL_DEF(sync)>);
+   REGISTER_SYSCALL_IMPL(acct, SyscallPassthrough1<SYSCALL_DEF(acct)>);

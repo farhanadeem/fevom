@@ -1,0 +1,4 @@
+state: stopped
+engine: stopped
+stopped by: "fev stop"; "fev start" starts it again
+since: 2026-10-10T23:01:10Z

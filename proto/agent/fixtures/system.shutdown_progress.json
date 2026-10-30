@@ -1,0 +1,8 @@
+{
+  "method": "system.shutdown_progress",
+  "notification": true,
+  "params": {
+    "phase": "unmount",
+    "error": "sync: input/output error"
+  }
+}

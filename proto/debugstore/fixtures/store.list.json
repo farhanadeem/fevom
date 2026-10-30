@@ -1,0 +1,20 @@
+{
+  "method": "store.list",
+  "params": {},
+  "result": {
+    "packages": [
+      {
+        "name": "vim-9.2",
+        "store_path": "/nix/store/1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p-vim-9.2",
+        "commands": ["vim", "vimdiff"],
+        "default": true
+      },
+      {
+        "name": "python3-3.13.2",
+        "attr": "python3",
+        "store_path": "/nix/store/6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d-python3-3.13.2",
+        "commands": ["python3", "python3.13"]
+      }
+    ]
+  }
+}

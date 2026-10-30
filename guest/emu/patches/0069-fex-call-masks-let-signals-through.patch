@@ -1,0 +1,164 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/ThreadManager.h b/Source/Tools/LinuxEmulation/LinuxSyscalls/ThreadManager.h
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/ThreadManager.h
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/ThreadManager.h
+@@ -78,6 +78,9 @@
+     // The mask prior to a suspend
+     FEX::HLE::GuestSAMask PreviousSuspendMask {};
+ 
++    FEX::HLE::GuestSAMask CallMask {};
++    bool CallMaskActive {};
++
+     uint64_t PendingSignals {};
+ 
+     uint64_t LoopSP {};
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.h b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.h
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.h
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.h
+@@ -91,6 +91,8 @@
+   uint64_t GuestSigProcMask(FEX::HLE::ThreadStateObject* Thread, int how, const uint64_t* set, uint64_t* oldset);
+   uint64_t GuestSigPending(FEX::HLE::ThreadStateObject* Thread, uint64_t* set, size_t sigsetsize);
+   uint64_t GuestSigSuspend(FEX::HLE::ThreadStateObject* Thread, uint64_t* set, size_t sigsetsize);
++  uint64_t BeginCallMask(FEX::HLE::ThreadStateObject* Thread, uint64_t GuestMask);
++  void EndCallMask(FEX::HLE::ThreadStateObject* Thread);
+   uint64_t GuestSigTimedWait(uint64_t* set, siginfo_t* info, const struct timespec* timeout, size_t sigsetsize);
+   uint64_t GuestSignalFD(int fd, const uint64_t* set, size_t sigsetsize, int flags);
+   /**  @} */
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+@@ -727,7 +727,9 @@
+   }
+ 
+   // Check for masked signals
+-  if (ThreadObject->SignalInfo.CurrentSignalMask.Val & (1ULL << (Signal - 1)) && IsAsyncSignal(&SigInfo, Signal)) {
++  const uint64_t GuestMask =
++    ThreadObject->SignalInfo.CallMaskActive ? ThreadObject->SignalInfo.CallMask.Val : ThreadObject->SignalInfo.CurrentSignalMask.Val;
++  if (GuestMask & (1ULL << (Signal - 1)) && IsAsyncSignal(&SigInfo, Signal)) {
+     // This signal is masked, must defer until the guest updates the signal mask.
+     // Add it to the pending signal list
+     ThreadObject->SignalInfo.PendingSignals |= 1ULL << (Signal - 1);
+@@ -1372,6 +1374,17 @@
+   return 0;
+ }
+ 
++uint64_t SignalDelegator::BeginCallMask(FEX::HLE::ThreadStateObject* Thread, uint64_t GuestMask) {
++  const uint64_t IgnoredSignalsMask = ~((1ULL << (SIGKILL - 1)) | (1ULL << (SIGSTOP - 1)));
++  Thread->SignalInfo.CallMask.Val = GuestMask & IgnoredSignalsMask;
++  Thread->SignalInfo.CallMaskActive = true;
++  return (Thread->SignalInfo.CallMask.Val | DeferredFrameSignals(Thread)) & ~RequiredSignalMask();
++}
++
++void SignalDelegator::EndCallMask(FEX::HLE::ThreadStateObject* Thread) {
++  Thread->SignalInfo.CallMaskActive = false;
++}
++
+ uint64_t SignalDelegator::GuestSigSuspend(FEX::HLE::ThreadStateObject* Thread, uint64_t* set, size_t sigsetsize) {
+   if (sigsetsize > sizeof(uint64_t)) {
+     return -EINVAL;
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Passthrough.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Passthrough.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Passthrough.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Passthrough.cpp
+@@ -6,12 +6,14 @@
+ $end_info$
+ */
+ 
++#include "LinuxSyscalls/SignalDelegator.h"
+ #include "LinuxSyscalls/Syscalls.h"
+ #include "LinuxSyscalls/x64/Syscalls.h"
+ #include "LinuxSyscalls/x32/Syscalls.h"
+ 
+ #include <stdint.h>
+ #include <sys/epoll.h>
++#include <sys/select.h>
+ 
+ namespace FEX::HLE {
+ #ifdef ARCHITECTURE_arm64
+@@ -465,8 +467,39 @@
+     REGISTER_SYSCALL_IMPL_X64(mq_notify, SyscallPassthrough2<SYSCALL_DEF(mq_notify)>);
+     REGISTER_SYSCALL_IMPL_X64(mq_getsetattr, SyscallPassthrough3<SYSCALL_DEF(mq_getsetattr)>);
+     REGISTER_SYSCALL_IMPL_X64(waitid, SyscallPassthrough5<SYSCALL_DEF(waitid)>);
+-    REGISTER_SYSCALL_IMPL_X64(pselect6, SyscallPassthrough6<SYSCALL_DEF(pselect6)>);
+-    REGISTER_SYSCALL_IMPL_X64(ppoll, SyscallPassthrough5<SYSCALL_DEF(ppoll)>);
++    REGISTER_SYSCALL_IMPL_X64(pselect6, ([](FEXCore::Core::CpuStateFrame* Frame, int nfds, fd_set* readfds, fd_set* writefds,
++                                           fd_set* exceptfds, struct timespec* timeout, const uint64_t* sigarg) -> uint64_t {
++      if (sigarg == nullptr || sigarg[0] == 0) {
++        return SyscallPassthrough6<SYSCALL_DEF(pselect6)>(Frame, nfds, (uint64_t)readfds, (uint64_t)writefds, (uint64_t)exceptfds,
++                                                          (uint64_t)timeout, (uint64_t)sigarg);
++      }
++      if (sigarg[1] != 8) {
++        return -EINVAL;
++      }
++      auto Thread = FEX::HLE::ThreadManager::GetStateObjectFromCPUState(Frame);
++      auto Delegator = FEX::HLE::_SyscallHandler->GetSignalDelegator();
++      uint64_t HostMask = Delegator->BeginCallMask(Thread, *reinterpret_cast<const uint64_t*>(sigarg[0]));
++      const uint64_t HostArg[2] = {reinterpret_cast<uint64_t>(&HostMask), 8};
++      uint64_t Result = SyscallPassthrough6<SYSCALL_DEF(pselect6)>(Frame, nfds, (uint64_t)readfds, (uint64_t)writefds,
++                                                                   (uint64_t)exceptfds, (uint64_t)timeout, (uint64_t)HostArg);
++      Delegator->EndCallMask(Thread);
++      return Result;
++    }));
++    REGISTER_SYSCALL_IMPL_X64(ppoll, [](FEXCore::Core::CpuStateFrame* Frame, uint64_t fds, uint64_t nfds, uint64_t tmo_p,
++                                        const uint64_t* sigmask, size_t sigsetsize) -> uint64_t {
++      if (sigmask == nullptr) {
++        return SyscallPassthrough5<SYSCALL_DEF(ppoll)>(Frame, fds, nfds, tmo_p, 0, sigsetsize);
++      }
++      if (sigsetsize != 8) {
++        return -EINVAL;
++      }
++      auto Thread = FEX::HLE::ThreadManager::GetStateObjectFromCPUState(Frame);
++      auto Delegator = FEX::HLE::_SyscallHandler->GetSignalDelegator();
++      uint64_t HostMask = Delegator->BeginCallMask(Thread, *sigmask);
++      uint64_t Result = SyscallPassthrough5<SYSCALL_DEF(ppoll)>(Frame, fds, nfds, tmo_p, (uint64_t)&HostMask, 8);
++      Delegator->EndCallMask(Thread);
++      return Result;
++    });
+     REGISTER_SYSCALL_IMPL_X64(set_robust_list, SyscallPassthrough2<SYSCALL_DEF(set_robust_list)>);
+     REGISTER_SYSCALL_IMPL_X64(get_robust_list, SyscallPassthrough3<SYSCALL_DEF(get_robust_list)>);
+     REGISTER_SYSCALL_IMPL_X64(sync_file_range, SyscallPassthrough4<SYSCALL_DEF(sync_file_range)>);
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/x64/EPoll.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/x64/EPoll.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/x64/EPoll.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/x64/EPoll.cpp
+@@ -6,6 +6,7 @@
+ $end_info$
+ */
+ 
++#include "LinuxSyscalls/SignalDelegator.h"
+ #include "LinuxSyscalls/Syscalls.h"
+ #include "LinuxSyscalls/Types.h"
+ #include "LinuxSyscalls/x64/Syscalls.h"
+@@ -62,7 +63,16 @@
+                                const uint64_t* sigmask, size_t sigsetsize) -> uint64_t {
+                               fextl::vector<struct epoll_event> Events(std::max(0, maxevent));
+ 
+-                              uint64_t Result = ::syscall(SYSCALL_DEF(epoll_pwait), epfd, Events.data(), maxevent, timeout, sigmask, sigsetsize);
++                              uint64_t Result;
++                              if (sigmask != nullptr && sigsetsize == 8) {
++                                auto Thread = FEX::HLE::ThreadManager::GetStateObjectFromCPUState(Frame);
++                                auto Delegator = FEX::HLE::_SyscallHandler->GetSignalDelegator();
++                                uint64_t HostMask = Delegator->BeginCallMask(Thread, *sigmask);
++                                Result = ::syscall(SYSCALL_DEF(epoll_pwait), epfd, Events.data(), maxevent, timeout, &HostMask, sigsetsize);
++                                Delegator->EndCallMask(Thread);
++                              } else {
++                                Result = ::syscall(SYSCALL_DEF(epoll_pwait), epfd, Events.data(), maxevent, timeout, sigmask, sigsetsize);
++                              }
+ 
+                               if (Result != -1) {
+                                 FaultSafeUserMemAccess::VerifyIsWritable(events, sizeof(FEX::HLE::epoll_event_x86) * Result);
+@@ -79,7 +89,16 @@
+                                timespec* timeout, const uint64_t* sigmask, size_t sigsetsize) -> uint64_t {
+                               fextl::vector<struct epoll_event> Events(std::max(0, maxevent));
+ 
+-                              uint64_t Result = ::syscall(SYSCALL_DEF(epoll_pwait2), epfd, Events.data(), maxevent, timeout, sigmask, sigsetsize);
++                              uint64_t Result;
++                              if (sigmask != nullptr && sigsetsize == 8) {
++                                auto Thread = FEX::HLE::ThreadManager::GetStateObjectFromCPUState(Frame);
++                                auto Delegator = FEX::HLE::_SyscallHandler->GetSignalDelegator();
++                                uint64_t HostMask = Delegator->BeginCallMask(Thread, *sigmask);
++                                Result = ::syscall(SYSCALL_DEF(epoll_pwait2), epfd, Events.data(), maxevent, timeout, &HostMask, sigsetsize);
++                                Delegator->EndCallMask(Thread);
++                              } else {
++                                Result = ::syscall(SYSCALL_DEF(epoll_pwait2), epfd, Events.data(), maxevent, timeout, sigmask, sigsetsize);
++                              }
+ 
+                               if (Result != -1) {
+                                 FaultSafeUserMemAccess::VerifyIsWritable(events, sizeof(FEX::HLE::epoll_event_x86) * Result);

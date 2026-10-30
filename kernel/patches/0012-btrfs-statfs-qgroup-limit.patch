@@ -1,0 +1,102 @@
+diff --git a/fs/btrfs/qgroup.c b/fs/btrfs/qgroup.c
+--- a/fs/btrfs/qgroup.c
++++ b/fs/btrfs/qgroup.c
+@@ -3,6 +3,7 @@
+  * Copyright (C) 2011 STRATO.  All rights reserved.
+  */
+ 
++#include <linux/moduleparam.h>
+ #include <linux/sched.h>
+ #include <linux/pagemap.h>
+ #include <linux/writeback.h>
+@@ -3661,7 +3662,57 @@
+ 	spin_unlock(&fs_info->qgroup_lock);
+ 	return ret;
+ }
++
++static bool btrfs_statfs_qgroup_limit = true;
++module_param_named(statfs_qgroup_limit, btrfs_statfs_qgroup_limit, bool, 0644);
++MODULE_PARM_DESC(statfs_qgroup_limit,
++		 "statfs reports the referenced-size limits of a subvolume's qgroups as its size and free space (default: Y)");
++
++void btrfs_qgroup_statfs(struct btrfs_root *root, u64 *total, u64 *free, u64 *avail)
++{
++	struct btrfs_fs_info *fs_info = root->fs_info;
++	struct btrfs_qgroup *qgroup;
++	LIST_HEAD(qgroup_list);
+ 
++	if (!READ_ONCE(btrfs_statfs_qgroup_limit))
++		return;
++
++	if (!btrfs_qgroup_enabled(fs_info) || !btrfs_is_fstree(btrfs_root_id(root)))
++		return;
++
++	spin_lock(&fs_info->qgroup_lock);
++	if (!fs_info->quota_root)
++		goto out;
++
++	qgroup = find_qgroup_rb(fs_info, btrfs_root_id(root));
++	if (!qgroup)
++		goto out;
++
++	qgroup_iterator_add(&qgroup_list, qgroup);
++	list_for_each_entry(qgroup, &qgroup_list, iterator) {
++		struct btrfs_qgroup_list *glist;
++
++		if (qgroup->lim_flags & BTRFS_QGROUP_LIMIT_MAX_RFER) {
++			const u64 used = qgroup_rsv_total(qgroup) + (s64)qgroup->rfer;
++			u64 left = 0;
++
++			if (used < qgroup->max_rfer)
++				left = qgroup->max_rfer - used;
++
++			*total = min(*total, qgroup->max_rfer);
++			*free = min(*free, left);
++			*avail = min(*avail, left);
++		}
++
++		list_for_each_entry(glist, &qgroup->groups, next_group)
++			qgroup_iterator_add(&qgroup_list, glist->group);
++	}
++
++out:
++	qgroup_iterator_clean(&qgroup_list);
++	spin_unlock(&fs_info->qgroup_lock);
++}
++
+ /*
+  * Free @num_bytes of reserved space with @type for qgroup.  (Normally level 0
+  * qgroup).
+diff --git a/fs/btrfs/qgroup.h b/fs/btrfs/qgroup.h
+--- a/fs/btrfs/qgroup.h
++++ b/fs/btrfs/qgroup.h
+@@ -376,6 +376,7 @@
+ int btrfs_qgroup_inherit(struct btrfs_trans_handle *trans, u64 srcid,
+ 			 u64 objectid, u64 inode_rootid,
+ 			 struct btrfs_qgroup_inherit *inherit);
++void btrfs_qgroup_statfs(struct btrfs_root *root, u64 *total, u64 *free, u64 *avail);
+ void btrfs_qgroup_free_refroot(struct btrfs_fs_info *fs_info,
+ 			       u64 ref_root, u64 num_bytes,
+ 			       enum btrfs_qgroup_rsv_type type);
+diff --git a/fs/btrfs/super.c b/fs/btrfs/super.c
+--- a/fs/btrfs/super.c
++++ b/fs/btrfs/super.c
+@@ -1818,6 +1818,18 @@
+ 	if (!mixed && block_rsv->space_info->full &&
+ 	    (total_free_meta < thresh || total_free_meta - thresh < block_rsv->size))
+ 		buf->f_bavail = 0;
++
++	if (btrfs_qgroup_enabled(fs_info)) {
++		u64 total = buf->f_blocks << bits;
++		u64 bfree = buf->f_bfree << bits;
++		u64 bavail = buf->f_bavail << bits;
++
++		btrfs_qgroup_statfs(BTRFS_I(d_inode(dentry))->root, &total,
++				    &bfree, &bavail);
++		buf->f_blocks = total >> bits;
++		buf->f_bfree = bfree >> bits;
++		buf->f_bavail = bavail >> bits;
++	}
+ 
+ 	buf->f_type = BTRFS_SUPER_MAGIC;
+ 	buf->f_bsize = fs_info->sectorsize;

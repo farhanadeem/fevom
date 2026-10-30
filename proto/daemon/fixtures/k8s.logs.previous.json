@@ -1,0 +1,12 @@
+{
+  "method": "k8s.logs",
+  "params": {
+    "namespace": "default",
+    "pod": "web-7c9d8b6f5-x2kqz",
+    "previous": true,
+    "timestamps": true
+  },
+  "result": {
+    "subscription": 10
+  }
+}

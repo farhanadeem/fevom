@@ -1,0 +1,102 @@
+diff --git a/fs/btrfs/qgroup.c b/fs/btrfs/qgroup.c
+--- a/fs/btrfs/qgroup.c
++++ b/fs/btrfs/qgroup.c
+@@ -3221,44 +3221,68 @@
+ 	}
+ 	return 0;
+ }
++
++static bool btrfs_qgroup_inherit_parent = true;
++module_param_named(qgroup_inherit_parent, btrfs_qgroup_inherit_parent, bool, 0644);
++MODULE_PARM_DESC(qgroup_inherit_parent,
++		 "under simple quotas a new subvolume joins its parent's qgroups even when the caller names groups of its own (default: Y)");
+ 
+ static int qgroup_auto_inherit(struct btrfs_fs_info *fs_info,
+ 			       u64 inode_rootid,
+ 			       struct btrfs_qgroup_inherit **inherit)
+ {
+-	int i = 0;
+-	u64 num_qgroups = 0;
++	const struct btrfs_qgroup_inherit *given = *inherit;
++	const u64 num_given = given ? given->num_qgroups : 0;
++	u64 num_parent;
++	u64 n = 0;
+ 	struct btrfs_qgroup *inode_qg;
+ 	struct btrfs_qgroup_list *qg_list;
+ 	struct btrfs_qgroup_inherit *res;
+ 	size_t struct_sz;
+ 	u64 *qgids;
+ 
+-	if (*inherit)
+-		return -EEXIST;
++	if (given && !READ_ONCE(btrfs_qgroup_inherit_parent))
++		return 0;
+ 
+ 	inode_qg = find_qgroup_rb(fs_info, inode_rootid);
+ 	if (!inode_qg)
+-		return -ENOENT;
++		return given ? 0 : -ENOENT;
+ 
+-	num_qgroups = list_count_nodes(&inode_qg->groups);
++	num_parent = list_count_nodes(&inode_qg->groups);
+ 
+-	if (!num_qgroups)
++	if (!num_parent)
+ 		return 0;
+ 
+-	struct_sz = struct_size(res, qgroups, num_qgroups);
++	struct_sz = struct_size(res, qgroups, num_parent + num_given);
+ 	if (struct_sz == SIZE_MAX)
+ 		return -ERANGE;
+ 
+ 	res = kzalloc(struct_sz, GFP_NOFS);
+ 	if (!res)
+ 		return -ENOMEM;
+-	res->num_qgroups = num_qgroups;
++	if (given) {
++		res->flags = given->flags;
++		res->lim = given->lim;
++	}
+ 	qgids = res->qgroups;
+ 
+ 	list_for_each_entry(qg_list, &inode_qg->groups, next_group)
+-		qgids[i++] = qg_list->group->qgroupid;
++		qgids[n++] = qg_list->group->qgroupid;
+ 
++	for (u64 i = 0; i < num_given; i++) {
++		bool have = false;
++
++		for (u64 j = 0; j < num_parent; j++) {
++			if (qgids[j] == given->qgroups[i]) {
++				have = true;
++				break;
++			}
++		}
++		if (!have)
++			qgids[n++] = given->qgroups[i];
++	}
++	res->num_qgroups = n;
++
+ 	*inherit = res;
+ 	return 0;
+ }
+@@ -3393,11 +3417,16 @@
+ 		goto out;
+ 	}
+ 
+-	if (btrfs_qgroup_mode(fs_info) == BTRFS_QGROUP_MODE_SIMPLE && !inherit) {
+-		ret = qgroup_auto_inherit(fs_info, inode_rootid, &inherit);
++	if (btrfs_qgroup_mode(fs_info) == BTRFS_QGROUP_MODE_SIMPLE) {
++		struct btrfs_qgroup_inherit *merged = inherit;
++
++		ret = qgroup_auto_inherit(fs_info, inode_rootid, &merged);
+ 		if (ret)
+ 			goto out;
+-		free_inherit = true;
++		if (merged != inherit) {
++			inherit = merged;
++			free_inherit = true;
++		}
+ 	}
+ 
+ 	if (inherit) {

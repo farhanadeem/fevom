@@ -1,0 +1,4 @@
+events records=3
+  create flags=0 mask=0 parent=12 child=0 parent2=0 victim=0 name="new.txt" name2=""
+  change flags=0 mask=modify|close_write|open parent=12 child=0 parent2=0 victim=0 name="new.txt" name2=""
+  create flags=isdir mask=0 parent=12 child=0 parent2=0 victim=0 name="sub" name2=""

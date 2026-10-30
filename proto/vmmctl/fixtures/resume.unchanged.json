@@ -1,0 +1,12 @@
+{
+  "method": "resume",
+  "params": {},
+  "result": {
+    "state": "running",
+    "changed": false,
+    "vcpus": 10,
+    "took_ns": 0,
+    "offset_ns": 0,
+    "total_offset_ns": 30000250000
+  }
+}

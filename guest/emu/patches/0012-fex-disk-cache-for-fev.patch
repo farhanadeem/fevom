@@ -1,0 +1,524 @@
+diff --git a/FEXCore/Source/Interface/Config/Config.json.in b/FEXCore/Source/Interface/Config/Config.json.in
+--- a/FEXCore/Source/Interface/Config/Config.json.in
++++ b/FEXCore/Source/Interface/Config/Config.json.in
+@@ -160,7 +160,7 @@
+       },
+       "DiskCache": {
+         "Type": "bool",
+-        "Default": "false",
++        "Default": "true",
+         "AffectsCodeGen": "false",
+         "Desc": [
+           "Enables disk caching for code blocks"
+@@ -208,10 +208,11 @@
+       },
+       "DiskCachePath": {
+         "Type": "str",
+-        "Default": "",
++        "Default": "/run/fev/fex-cache/",
+         "AffectsCodeGen": "false",
+         "Desc": [
+-          "Optional base directory override for disk cache"
++          "Optional base directory override for disk cache",
++          "fev: the directory fev mounts into a container or machine; with none there, no cache"
+         ]
+       },
+       "DiskCacheRODBNames": {
+diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interface/Context/Context.h
+--- a/FEXCore/Source/Interface/Context/Context.h
++++ b/FEXCore/Source/Interface/Context/Context.h
+@@ -219,6 +219,10 @@
+     if (CodeMapWriter) {
+       CodeMapWriter.reset();
+     }
++  }
++
++  void FlushDiskCache() override {
++    DiskCache.Flush();
+   }
+ 
+   void OnCodeBufferAllocated(const std::shared_ptr<CPU::CodeBuffer>&) override;
+diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
+--- a/FEXCore/Source/Interface/Core/Core.cpp
++++ b/FEXCore/Source/Interface/Core/Core.cpp
+@@ -456,6 +456,7 @@
+ 
+ #ifndef _WIN32
+ void ContextImpl::UnlockAfterFork(FEXCore::Core::InternalThreadState* LiveThread, bool Child) {
++  DiskCache.UnlockAfterFork(Child);
+   Allocator::UnlockAfterFork(LiveThread, Child);
+ 
+   Profiler::PostForkAction(Child);
+@@ -478,6 +479,7 @@
+ 
+ void ContextImpl::LockBeforeFork(FEXCore::Core::InternalThreadState* Thread) {
+   CodeInvalidationMutex.lock();
++  DiskCache.LockBeforeFork();
+   Allocator::LockBeforeFork(Thread);
+   if (Config.StrictInProcessSplitLocks) {
+     FEXCore::Utils::SpinWaitLock::lock(&StrictSplitLockMutex);
+diff --git a/FEXCore/Source/Interface/Core/DiskCache.cpp b/FEXCore/Source/Interface/Core/DiskCache.cpp
+--- a/FEXCore/Source/Interface/Core/DiskCache.cpp
++++ b/FEXCore/Source/Interface/Core/DiskCache.cpp
+@@ -22,6 +22,15 @@
+ #include <cstring>
+ #include <atomic>
+ 
++#ifdef __linux__
++#include <elf.h>
++#include <fcntl.h>
++#include <link.h>
++#include <sys/auxv.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#endif
++
+ namespace FEXCore {
+ 
+ namespace DiskCache {
+@@ -174,6 +183,10 @@
+     if (!IndexFOZ.Open(CacheDBName + "_idx.foz", ReadOnly)) {
+       return false;
+     }
++    Name = CacheDBName;
++    if (!ReadOnly && (!CacheFOZ.Open(CacheDBName + ".foz", true) || !IndexFOZ.Open(CacheDBName + "_idx.foz", true))) {
++      return false;
++    }
+ 
+     File::File::FileHandleType CacheFileHandle = CacheFOZ.GetHandle();
+     if (FileMapper && CacheFileHandle != (File::File::FileHandleType)-1) {
+@@ -285,6 +298,8 @@
+       return false;
+     }
+ 
++    auto& CacheFOZ = WriteCacheFOZ;
++    auto& IndexFOZ = WriteIndexFOZ;
+     if (!CacheFOZ.Lock(STORE_LOCK_TIMEOUT_MS) || !IndexFOZ.Lock(STORE_LOCK_TIMEOUT_MS)) {
+       CacheFOZ.Unlock();
+       IndexFOZ.Unlock();
+@@ -327,6 +342,22 @@
+     return true;
+   }
+ 
++  bool IndexedDB::BeginWrite() {
++    if (ReadOnly) {
++      return false;
++    }
++    if (!WriteCacheFOZ.Open(Name + ".foz", false) || !WriteIndexFOZ.Open(Name + "_idx.foz", false)) {
++      EndWrite();
++      return false;
++    }
++    return true;
++  }
++
++  void IndexedDB::EndWrite() {
++    WriteCacheFOZ.Close();
++    WriteIndexFOZ.Close();
++  }
++
+   bool DiskCache::OpenCacheDB(const fextl::string& CacheDBName, bool ReadOnly) {
+     fextl::unique_ptr<IndexedDB> CurDB;
+ 
+@@ -393,6 +424,61 @@
+       &SimpleCapture);
+   }
+ 
++#ifdef __linux__
++  static bool FevomDirectoryIs(const fextl::string& Path, bool Own) {
++    fextl::string Dir = Path;
++    while (Dir.size() > 1 && Dir.back() == '/') {
++      Dir.pop_back();
++    }
++    const int FD = open(Dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
++    if (FD < 0) {
++      return false;
++    }
++    struct stat St {};
++    const bool Statted = fstat(FD, &St) == 0;
++    close(FD);
++    if (!Statted) {
++      return false;
++    }
++    const uid_t Me = geteuid();
++    if (Own) {
++      return St.st_uid == Me && (St.st_mode & 077) == 0;
++    }
++    if (St.st_uid != 0 && St.st_uid != Me) {
++      return false;
++    }
++    return (St.st_mode & 022) == 0 || (St.st_mode & S_ISVTX) != 0;
++  }
++
++  static uint64_t FevomOwnBuildHash() {
++    uint64_t Hash = 0;
++    dl_iterate_phdr(
++      [](dl_phdr_info* Info, size_t, void* Data) -> int {
++        for (int i = 0; i < Info->dlpi_phnum; ++i) {
++          const auto& Ph = Info->dlpi_phdr[i];
++          if (Ph.p_type != PT_NOTE) {
++            continue;
++          }
++          const auto* P = reinterpret_cast<const uint8_t*>(Info->dlpi_addr + Ph.p_vaddr);
++          const auto* End = P + Ph.p_memsz;
++          while (P + sizeof(ElfW(Nhdr)) <= End) {
++            const auto* N = reinterpret_cast<const ElfW(Nhdr)*>(P);
++            const auto* Name = P + sizeof(*N);
++            const auto* Desc = Name + ((N->n_namesz + 3) & ~3U);
++            if (N->n_type == NT_GNU_BUILD_ID && N->n_namesz == 4 && memcmp(Name, "GNU", 4) == 0 && Desc + N->n_descsz <= End) {
++              *static_cast<uint64_t*>(Data) = XXH3_64bits(Desc, N->n_descsz);
++              return 1;
++            }
++            P = Desc + ((N->n_descsz + 3) & ~3U);
++          }
++        }
++        return 1;
++      },
++      &Hash);
++    return Hash;
++  }
++#endif
++
+   void DiskCache::Init(FEXCore::Context::ContextImpl* CTX) {
+     this->CTX = CTX;
+ 
+@@ -404,10 +490,23 @@
+ 
+     const auto HostFeatureHash = CTX->HostFeatures.HashForCaching();
+ 
++#ifdef __linux__
++    if (getauxval(AT_SECURE)) {
++      return;
++    }
++    const uint64_t OwnBuild = FevomOwnBuildHash();
++    if (OwnBuild == 0) {
++      return;
++    }
++#else
++    const uint64_t OwnBuild = 0;
++#endif
++
+     struct __attribute__((packed)) {
+       uint16_t FormatVersion;
+       uint64_t HostFeaturesHash;
+-    } MachineBucketData = {FormatVersion, HostFeatureHash.HostFeaturesHash};
++      uint64_t OwnBuild;
++    } MachineBucketData = {FormatVersion, HostFeatureHash.HostFeaturesHash, OwnBuild};
+ 
+     fextl::vector<uint8_t> BucketBytes(sizeof(MachineBucketData) + (sizeof(uint8_t) * 2) + SerializedConfig.size());
+     memcpy(BucketBytes.data(), &MachineBucketData, sizeof(MachineBucketData));
+@@ -426,7 +525,20 @@
+     fextl::string BasePath = BasePathOverride();
+     if (BasePath.empty()) {
+       BasePath = FEXCore::Config::GetCacheDirectory() + "DiskCache/";
++    }
++#ifdef __linux__
++    if (!BasePath.ends_with('/')) {
++      BasePath += '/';
+     }
++    if (!FevomDirectoryIs(BasePath, false)) {
++      return;
++    }
++    BasePath += fextl::fmt::format("{}/", geteuid());
++    (void)mkdir(BasePath.c_str(), 0700);
++    if (!FevomDirectoryIs(BasePath, true)) {
++      return;
++    }
++#endif
+ 
+     const auto MachineBucketHashAsString = fextl::fmt::format("{:016x}", MachineBucketHash);
+     PruneStaleEntries(BasePath, MachineBucketHashAsString);
+@@ -438,7 +550,9 @@
+       FileMapper = nullptr;
+     }
+ 
+-    const auto RWDBBasePath = fextl::fmt::format("{}RWCacheDB_{:016x}", BasePath, ProcessBucketHash);
++    FEX_CONFIG_OPT(AppFilename, APP_FILENAME);
++    const auto ProgramHash = XXH3_64bits(AppFilename().data(), AppFilename().size());
++    const auto RWDBBasePath = fextl::fmt::format("{}RWCacheDB_{:016x}_{:016x}", BasePath, ProcessBucketHash, ProgramHash);
+     OpenCacheDB(RWDBBasePath, false);
+ 
+     if (RWCacheDB && !FoundMetadata) {
+@@ -471,10 +585,9 @@
+     WritingDiskCache = (bool)RWCacheDB;
+     ReadingDiskCache = !ROCacheDBs.empty() || RWCacheDB != nullptr;
+ 
+-    if (IsWritingDiskCache()) {
+-      FEXCore::Threads::Flags WriterThreadFlags = {.LowPriority = true, .Internal = true};
+-      Writer = fextl::make_unique<WorkQueueThread>(WriterThreadFlags, "FEX:DiskCache");
+-    }
++#ifdef __linux__
++    OwnerUid = geteuid();
++#endif
+   }
+ 
+   uint64_t DiskCache::MakeLookupKey(Core::InternalThreadState* Thread, const uint64_t CodeKey, bool Writable, bool MonoBackpatcher) {
+@@ -500,11 +613,11 @@
+     return XXH3_64bits(&BlobKeyBytes, sizeof(BlobKeyBytes));
+   }
+ 
+-  struct DiskCache::PruneMemoryLRUWorkItem final : WorkQueueThread::WorkItem {
++  struct DiskCache::PruneMemoryLRUWorkItem final {
+     DiskCache* Self;
+     PruneMemoryLRUWorkItem(DiskCache* Self)
+       : Self(Self) {}
+-    void Run() override {
++    void Run() {
+       if (Self->MemoryLRUCurrentSize <= Self->MemoryLRUMaxSize + Self->MemoryLRUEvictThreshold) {
+         return;
+       }
+@@ -825,7 +938,7 @@
+     }
+ 
+     if (StoreInMemory && MemoryLRUCurrentSize > MemoryLRUMaxSize + MemoryLRUEvictThreshold) {
+-      Writer->QueueWork(fextl::make_unique<PruneMemoryLRUWorkItem>(this));
++      PruneMemoryLRUWorkItem(this).Run();
+     }
+ 
+     HitData.HostCode = {HitData.Blob.data() + BlobOffset, Header.HostSize};
+@@ -911,8 +1024,9 @@
+     return nullptr;
+   }
+ 
+-  struct DiskCache::CacheStoreWorkItem final : WorkQueueThread::WorkItem {
++  struct DiskCache::CacheStoreWorkItem final {
+     DiskCache* Self;
++    fextl::shared_ptr<fextl::vector<uint8_t>> Keep;
+     IndexedDB* DB;
+     MesaFOZ::foz_payload_key UniqueKey;
+     uint64_t LookupKey;
+@@ -928,7 +1042,7 @@
+       , Blob(Blob)
+       , IndexBlob(std::move(IndexBlob))
+       , StoreDisk(StoreDisk) {}
+-    void Run() override {
++    void Run() {
+       struct MesaFOZ::mesa_index_db_file_entry IndexHeader;
+       bool DiskSuccess = !StoreDisk || DB->StoreCacheBlob(UniqueKey, LookupKey, Blob, IndexHeader, IndexBlob);
+ 
+@@ -966,7 +1080,7 @@
+       }
+ 
+       if (KeepEntryInMemory && Self->MemoryLRUCurrentSize > Self->MemoryLRUMaxSize + Self->MemoryLRUEvictThreshold) {
+-        Self->Writer->QueueWork(fextl::make_unique<PruneMemoryLRUWorkItem>(Self));
++        PruneMemoryLRUWorkItem(Self).Run();
+       }
+     }
+   };
+@@ -1242,12 +1356,70 @@
+       StoreDisk = false;
+     }
+ 
+-    // hand the rest off to the writer thread
+-    Writer->QueueWork(fextl::make_unique<CacheStoreWorkItem>(this, RWCacheDB.get(), Key, LookupKey, std::span(BlobData, TotalSize),
+-                                                             std::move(IndexBlob), StoreDisk));
++    auto Item = fextl::make_unique<CacheStoreWorkItem>(this, RWCacheDB.get(), Key, LookupKey, std::span(BlobData, TotalSize),
++                                                       std::move(IndexBlob), StoreDisk);
++    Item->Keep = BlobRef;
++    bool FlushNow = false;
++    {
++      std::lock_guard Guard(PendingLock);
++      Pending.push_back(std::move(Item));
++      PendingBytes += TotalSize;
++      FlushNow = PendingBytes >= PENDING_FLUSH_BYTES;
++    }
++    if (FlushNow) {
++      Flush();
++    }
+     return true;
+   }
+ 
++  DiskCache::DiskCache() = default;
++  DiskCache::~DiskCache() = default;
++
++  void DiskCache::Flush() {
++    if (!RWCacheDB) {
++      return;
++    }
++    std::unique_lock FlushGuard(FlushLock);
++    std::unique_lock PendingGuard(PendingLock);
++    fextl::vector<fextl::unique_ptr<CacheStoreWorkItem>> Items;
++    Items.swap(Pending);
++    PendingBytes = 0;
++    PendingGuard.unlock();
++    if (Items.empty()) {
++      return;
++    }
++#ifdef __linux__
++    if (geteuid() != OwnerUid) {
++      return;
++    }
++#endif
++    if (!RWCacheDB->BeginWrite()) {
++      return;
++    }
++    for (auto& Item : Items) {
++      Item->Run();
++    }
++    RWCacheDB->EndWrite();
++  }
++
++  void DiskCache::LockBeforeFork() {
++    FlushLock.lock();
++    PendingLock.lock();
++    IndexLock.lock();
++    MemoryLRULock.lock();
++  }
++
++  void DiskCache::UnlockAfterFork(bool Child) {
++    if (Child) {
++      Pending.clear();
++      PendingBytes = 0;
++    }
++    MemoryLRULock.unlock();
++    IndexLock.unlock();
++    PendingLock.unlock();
++    FlushLock.unlock();
++  }
++
+   uint16_t GetFormatVersion() {
+     return FormatVersion;
+   }
+diff --git a/FEXCore/Source/Interface/Core/DiskCache.h b/FEXCore/Source/Interface/Core/DiskCache.h
+--- a/FEXCore/Source/Interface/Core/DiskCache.h
++++ b/FEXCore/Source/Interface/Core/DiskCache.h
+@@ -8,7 +8,6 @@
+ #include <FEXCore/Core/Context.h>
+ #include <FEXCore/Config/Config.h>
+ #include <FEXCore/Utils/File.h>
+-#include <FEXCore/Utils/WorkQueueThread.h>
+ #include <FEXCore/fextl/memory.h>
+ #include <FEXCore/fextl/string.h>
+ #include <FEXCore/fextl/unordered_set.h>
+@@ -152,6 +151,9 @@
+     bool ReadAll(fextl::vector<uint8_t>& Out); // from first blob
+     bool ReadBlob(uint64_t Offset, std::span<uint8_t> OutBlob);
+     bool WriteBlob(const MesaFOZ::foz_payload_key& Key, std::span<const std::span<const uint8_t>> BlobChunks, uint64_t& OutBlobOffset);
++    void Close() {
++      FD.reset();
++    }
+ 
+   private:
+     static constexpr uint32_t OPEN_LOCK_TIMEOUT_MS = 100;
+@@ -168,12 +170,13 @@
+     bool ReadCacheBlob(uint64_t Offset, std::span<uint8_t> OutBlob);
+     bool StoreCacheBlob(const MesaFOZ::foz_payload_key& UniqueKey, uint64_t LookupKey, std::span<const uint8_t> Blob,
+                         MesaFOZ::mesa_index_db_file_entry& IndexEntry, std::span<const uint8_t> IndexBlob);
++    bool BeginWrite();
++    void EndWrite();
+     bool Full() const {
+       return MaxSizeReached;
+     }
+ 
+   private:
+-    // stores run on the Writer, so returning quick isn't as important
+     static constexpr uint32_t STORE_LOCK_TIMEOUT_MS = 1000;
+     static constexpr uint64_t BIG_MAPPING_SIZE = 1ULL << 33;
+ 
+@@ -181,6 +184,9 @@
+     uint8_t* CacheFileMapping = nullptr;
+     std::atomic<uint64_t> CacheFileSize;
+     FOZFile IndexFOZ;
++    fextl::string Name;
++    FOZFile WriteCacheFOZ;
++    FOZFile WriteIndexFOZ;
+     bool ReadOnly = false;
+     bool MaxSizeReached = false;
+ 
+@@ -209,6 +215,13 @@
+       return Validation;
+     }
+ 
++    DiskCache();
++    ~DiskCache();
++
++    void Flush();
++    void LockBeforeFork();
++    void UnlockAfterFork(bool Child);
++
+   private:
+     bool OpenCacheDB(const fextl::string& CacheDBName, bool ReadOnly);
+     uint64_t MakeLookupKey(Core::InternalThreadState* Thread, const uint64_t ModuleOffset, bool Writable, bool MonoBackpatcher);
+@@ -230,8 +243,12 @@
+     std::mutex MemoryLRULock;
+     fextl::list<MemoryLRUKey> MemoryLRU;
+ 
+-    // the Writer holds references to all this stuff above and needs to be last
+-    fextl::unique_ptr<WorkQueueThread> Writer;
++    std::mutex FlushLock;
++    std::mutex PendingLock;
++    fextl::vector<fextl::unique_ptr<CacheStoreWorkItem>> Pending;
++    size_t PendingBytes {};
++    uint32_t OwnerUid {};
++    static constexpr size_t PENDING_FLUSH_BYTES = 4 * 1024 * 1024;
+ 
+     FEX_CONFIG_OPT(EnableDiskCache, DISKCACHE);
+     FEX_CONFIG_OPT(Validation, DISKCACHEVALIDATION);
+diff --git a/FEXCore/include/FEXCore/Core/Context.h b/FEXCore/include/FEXCore/Core/Context.h
+--- a/FEXCore/include/FEXCore/Core/Context.h
++++ b/FEXCore/include/FEXCore/Core/Context.h
+@@ -138,6 +138,7 @@
+   virtual AbstractCodeCache& GetCodeCache() = 0;
+   virtual void SetCodeMapWriter(fextl::unique_ptr<CodeMapWriter>) = 0;
+   virtual void FlushAndCloseCodeMap() = 0;
++  virtual void FlushDiskCache() {}
+ 
+   FEX_DEFAULT_VISIBILITY virtual void ClearCodeCache(FEXCore::Core::InternalThreadState* Thread, bool NewCodeBuffer = true) = 0;
+   FEX_DEFAULT_VISIBILITY virtual void InvalidateCodeBuffersCodeRange(uint64_t Start, uint64_t Length) = 0;
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp
+@@ -199,6 +199,7 @@
+ uint64_t ExecveHandler(FEXCore::Core::CpuStateFrame* Frame, const char* pathname, char* const* argv, char* const* envp, ExecveAtArgs Args) {
+   auto SyscallHandler = FEX::HLE::_SyscallHandler;
+   Frame->Thread->CTX->FlushAndCloseCodeMap();
++  Frame->Thread->CTX->FlushDiskCache();
+ 
+   fextl::string Filename {};
+ 
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
+@@ -574,6 +574,7 @@
+ 
+   REGISTER_SYSCALL_IMPL(exit_group, [](FEXCore::Core::CpuStateFrame* Frame, int status) -> uint64_t {
+     Frame->Thread->CTX->FlushAndCloseCodeMap();
++    Frame->Thread->CTX->FlushDiskCache();
+ 
+     // Save telemetry if we're exiting.
+     FEX::HLE::_SyscallHandler->GetSignalDelegator()->SaveTelemetry();
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/ThreadManager.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/ThreadManager.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/ThreadManager.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/ThreadManager.cpp
+@@ -257,6 +257,7 @@
+     Threads.erase(It);
+     if (Threads.empty()) {
+       Thread->Thread->CTX->FlushAndCloseCodeMap();
++      Thread->Thread->CTX->FlushDiskCache();
+     }
+   }
+ 
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SyscallsSMCTracking.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/SyscallsSMCTracking.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SyscallsSMCTracking.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SyscallsSMCTracking.cpp
+@@ -691,6 +691,21 @@
+         } else if (CheckForElfFileDiskCache) {
+           auto ELFResult = ReadELFHeaders(fd, std::span {reinterpret_cast<std::byte*>(addr), length});
+           Resource->MappedFile->FileId = ComputeCodeMapId(Resource->MappedFile->Filename, &ELFResult.BuildID);
++          uint64_t MinAddress = 0;
++          uint64_t MaxAddress = 0;
++          for (auto& ProgramHeader : ELFResult.ProgramHeaders) {
++            if (ProgramHeader.p_type == PT_LOAD) {
++              if (!MinAddress && !MaxAddress) {
++                MinAddress = ProgramHeader.p_vaddr;
++                MaxAddress = ProgramHeader.p_vaddr + ProgramHeader.p_memsz;
++              }
++              MinAddress = std::min(MinAddress, ProgramHeader.p_vaddr);
++              MaxAddress = std::max(MaxAddress, ProgramHeader.p_vaddr + ProgramHeader.p_memsz);
++            }
++          }
++          if (MaxAddress > MinAddress) {
++            Resource->MappedFile->MappedSize = MaxAddress - MinAddress;
++          }
+         } else {
+           Resource->MappedFile->FileId = ComputeCodeMapId(Resource->MappedFile->Filename);
+         }

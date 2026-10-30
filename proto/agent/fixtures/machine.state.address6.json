@@ -1,0 +1,23 @@
+{
+  "method": "machine.state",
+  "notification": true,
+  "params": {
+    "name": "u26",
+    "state": "running",
+    "image": {
+      "distro": "ubuntu",
+      "release": "resolute",
+      "arch": "arm64",
+      "variant": "default",
+      "serial": "20261014_07:42"
+    },
+    "uuid": "6f1d2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b",
+    "init": "systemd",
+    "address": "198.19.0.57",
+    "address6": "fd5b:6e2a:91c0:1:216:3eff:fe1a:2b3c",
+    "pid": 4211,
+    "started_ms": 120331.5,
+    "ready_ms": 121904.2,
+    "disk_bytes": 251658240
+  }
+}

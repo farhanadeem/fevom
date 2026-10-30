@@ -1,0 +1,19 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 9,
+    "state": "running",
+    "engine": "ready",
+    "boot_id": "c40d19",
+    "since": "2026-10-10T12:00:00.4Z",
+    "pending_restart": [],
+    "windows": {
+      "data_disk": {
+        "state": "off",
+        "reason": "no room for one in a guest address space of 36 bits",
+        "size_bytes": 0
+      }
+    }
+  }
+}

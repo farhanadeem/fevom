@@ -1,0 +1,7 @@
+{
+  "method": "log.unsubscribe",
+  "params": {
+    "subscription": 3
+  },
+  "result": {}
+}

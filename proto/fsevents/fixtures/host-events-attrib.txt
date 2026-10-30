@@ -1,0 +1,4 @@
+events records=3
+  change flags=0 mask=attrib parent=12 child=57 parent2=0 victim=0 name="main.go" name2=""
+  change flags=isdir mask=attrib parent=0 child=12 parent2=0 victim=0 name="" name2=""
+  change flags=quiet mask=0 parent=0 child=57 parent2=0 victim=0 name="" name2=""

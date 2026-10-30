@@ -1,0 +1,23 @@
+{
+  "method": "machines.info",
+  "params": {
+    "name": "dev"
+  },
+  "result": {
+    "name": "dev",
+    "state": "running",
+    "image": {
+      "distro": "ubuntu",
+      "release": "questing",
+      "arch": "arm64",
+      "variant": "cloud",
+      "serial": "20261014_07:42"
+    },
+    "user": "ada",
+    "default": true,
+    "address": "198.19.0.10",
+    "address6": "fd5e:1c2b:9a40:1:216:3eff:fe2a:a",
+    "disk_size": 1288490188,
+    "since": "2026-10-14T09:12:41Z"
+  }
+}

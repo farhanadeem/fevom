@@ -1,0 +1,7 @@
+{
+  "method": "log.backlog_end",
+  "notification": true,
+  "params": {
+    "subscription": 3
+  }
+}

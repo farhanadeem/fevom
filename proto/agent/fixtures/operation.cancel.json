@@ -1,0 +1,7 @@
+{
+  "method": "operation.cancel",
+  "params": {
+    "id": 6
+  },
+  "result": {}
+}

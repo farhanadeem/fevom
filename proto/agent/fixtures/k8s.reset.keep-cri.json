@@ -1,0 +1,9 @@
+{
+  "method": "k8s.reset",
+  "params": {
+    "keep_cri": true
+  },
+  "result": {
+    "id": 314
+  }
+}

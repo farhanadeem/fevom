@@ -1,0 +1,19 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "id": 22,
+    "method": "volume.import",
+    "state": "done",
+    "phase": "archive",
+    "done_bytes": 52428800,
+    "total_bytes": 52428800,
+    "result": {
+      "name": "pgdata",
+      "labels": {
+        "com.docker.compose.project": "shop"
+      },
+      "files": 1288
+    }
+  }
+}

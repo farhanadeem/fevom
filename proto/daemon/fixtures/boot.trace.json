@@ -1,0 +1,130 @@
+{
+  "method": "boot.trace",
+  "params": {},
+  "result": {
+    "v": 1,
+    "boot_id": "b3f1c2",
+    "build": "dcd8a24-dirty.0a1b2c3d",
+    "wall": "2026-10-08T12:00:00.123Z",
+    "clock": "uptime_raw",
+    "origin": "client",
+    "origin_ns": 2012826894219000,
+    "cpus": 2,
+    "memory_mib": 4096,
+    "guest_offset_ms": 31.42,
+    "guest_error_ms": 0.21,
+    "marks": [
+      {
+        "name": "daemon.main",
+        "ms": 6.1
+      },
+      {
+        "name": "daemon.api_listening",
+        "ms": 8.0
+      },
+      {
+        "name": "docker.sock_bound",
+        "ms": 8.4
+      },
+      {
+        "name": "vmm.spawn",
+        "ms": 9.2
+      },
+      {
+        "name": "vmm.main",
+        "ms": 14.0
+      },
+      {
+        "name": "vmm.guest_entry",
+        "ms": 16.4
+      },
+      {
+        "name": "guest.console_first",
+        "ms": 36.0
+      },
+      {
+        "name": "kernel.run_init",
+        "ms": 38.9,
+        "approx": true
+      },
+      {
+        "name": "init.main",
+        "ms": 40.0
+      },
+      {
+        "name": "agent.connected",
+        "ms": 41.2
+      },
+      {
+        "name": "init.ready",
+        "ms": 41.5
+      },
+      {
+        "name": "engine.start",
+        "ms": 41.25
+      },
+      {
+        "name": "engine.ready",
+        "ms": 900.0
+      },
+      {
+        "name": "docker.released",
+        "ms": 905.0
+      }
+    ],
+    "stages": [
+      {
+        "stage": 0,
+        "from": "origin",
+        "to": "vmm.spawn",
+        "ms": 9.2,
+        "budget_ms": 50,
+        "over": false
+      },
+      {
+        "stage": 1,
+        "from": "vmm.spawn",
+        "to": "vmm.guest_entry",
+        "ms": 7.2,
+        "budget_ms": 100,
+        "over": false
+      },
+      {
+        "stage": 2,
+        "from": "vmm.guest_entry",
+        "to": "init.main",
+        "ms": 23.6,
+        "budget_ms": 350,
+        "over": false
+      },
+      {
+        "stage": 3,
+        "from": "init.main",
+        "to": "init.ready",
+        "ms": 1.5,
+        "budget_ms": 200,
+        "over": false
+      },
+      {
+        "stage": 4,
+        "from": "init.ready",
+        "to": "engine.ready",
+        "ms": 858.5,
+        "budget_ms": 1100,
+        "over": false
+      },
+      {
+        "stage": 5,
+        "from": "engine.ready",
+        "to": "docker.released",
+        "ms": 5.0,
+        "budget_ms": 200,
+        "over": false
+      }
+    ],
+    "total_ms": 905.0,
+    "budget_ms": 2000,
+    "ok": true,
+    "complete": true
+  }
+}

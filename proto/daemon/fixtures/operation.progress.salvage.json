@@ -1,0 +1,21 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "operation": {
+      "id": "op-20261014T110000-4",
+      "method": "storage.salvage",
+      "target": "/Users/ada/Salvage",
+      "state": "done",
+      "phase": "copy",
+      "started": "2026-10-14T11:00:00Z",
+      "ended": "2026-10-14T11:03:12Z",
+      "result": {
+        "method": "copy",
+        "files": 18234,
+        "bytes": 2147483648
+      }
+    }
+  }
+}

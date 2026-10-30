@@ -1,0 +1,9 @@
+{
+  "method": "storage.check",
+  "params": {
+    "follow": true
+  },
+  "result": {
+    "id": 7
+  }
+}

@@ -1,0 +1,29 @@
+diff --git a/fs/nfsd/nfssvc.c b/fs/nfsd/nfssvc.c
+--- a/fs/nfsd/nfssvc.c
++++ b/fs/nfsd/nfssvc.c
+@@ -12,6 +12,8 @@
+ #include <linux/module.h>
+ #include <linux/fs_struct.h>
+ #include <linux/swap.h>
++#include <linux/memcontrol.h>
++#include <linux/sched/mm.h>
+ #include <linux/siphash.h>
+ 
+ #include <linux/sunrpc/stats.h>
+@@ -910,7 +912,15 @@
+ 	 * The main request loop
+ 	 */
+ 	while (!svc_thread_should_stop(rqstp)) {
+-		switch (svc_recv(rqstp, 5 * HZ)) {
++		struct mem_cgroup *memcg, *old_memcg;
++		int got;
++
++		memcg = get_mem_cgroup_from_current();
++		old_memcg = set_active_memcg(memcg);
++		got = svc_recv(rqstp, 5 * HZ);
++		set_active_memcg(old_memcg);
++		mem_cgroup_put(memcg);
++		switch (got) {
+ 		case -ETIMEDOUT:
+ 			/* No work arrived within the timeout window */
+ 			if (mutex_trylock(&nfsd_mutex)) {

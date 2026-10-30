@@ -1,0 +1,11 @@
+{
+  "method": "engine.status",
+  "params": {},
+  "result": {
+    "state": "ready",
+    "pid": 212,
+    "starts": 1,
+    "started_ms": 29.5,
+    "ready_ms": 912.5
+  }
+}

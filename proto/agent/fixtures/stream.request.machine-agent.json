@@ -1,0 +1,10 @@
+{
+  "method": "stream.request",
+  "notification": true,
+  "params": {
+    "token": "2b3c4d5e6f708192a3b4c5d6e7f8091a",
+    "service": "ssh-agent",
+    "machine": "f43",
+    "uid": 0
+  }
+}

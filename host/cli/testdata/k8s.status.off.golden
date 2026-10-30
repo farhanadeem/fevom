@@ -1,0 +1,3 @@
+state: off
+start: "fev k8s start" downloads Kubernetes (238.6 MiB) once
+cost: Kubernetes uses about a tenth of a core and 2 GiB of memory while on

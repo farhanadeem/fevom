@@ -1,0 +1,9 @@
+{
+  "method": "machine.ports_changed",
+  "notification": true,
+  "params": {
+    "name": "dev",
+    "seq": 57,
+    "ports": []
+  }
+}

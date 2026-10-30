@@ -1,0 +1,10 @@
+{
+  "method": "power.sleep",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "time": "2026-10-10T22:14:03.9Z",
+    "paused": true,
+    "changed": false
+  }
+}

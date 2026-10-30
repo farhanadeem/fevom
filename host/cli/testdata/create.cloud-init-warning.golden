@@ -1,0 +1,4 @@
+fev: create dev: download
+fev: create dev: warning: cloud-init finished with recoverable errors:
+  ERROR: Invalid doas rule 'permit nopass alpine' for user 'ada', not writing any doas rules for user!
+  WARNING: Failed generating key type rsa to file /etc/ssh/ssh_host_rsa_key

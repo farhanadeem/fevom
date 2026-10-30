@@ -1,0 +1,43 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "id": 3,
+    "method": "machine.create",
+    "state": "done",
+    "phase": "cloud-init",
+    "result": {
+      "machine": {
+        "name": "dev",
+        "state": "running",
+        "image": {
+          "distro": "ubuntu",
+          "release": "questing",
+          "arch": "arm64",
+          "variant": "cloud",
+          "serial": "20261014_07:42"
+        },
+        "uuid": "8f14e45f-ceea-467a-9575-0c7a3c5d2b11",
+        "init": "systemd",
+        "address": "198.19.0.10",
+        "pid": 2311,
+        "started_ms": 61234.5,
+        "ready_ms": 62102.0,
+        "disk_bytes": 1288490188
+      },
+      "cloud_init": {
+        "status": "error",
+        "errors": [
+          "('scripts_user', RuntimeError('Runparts: 1 failures (runcmd) in 1 attempted commands'))"
+        ],
+        "output_tail": [
+          "make: *** /srv/app: No such file or directory.  Stop.",
+          "Cloud-init v. 25.2 finished at Wed, 14 Oct 2026 09:12:40 +0000. Datasource DataSourceNoCloudNet [seed=/var/lib/cloud/seed/nocloud-net]. Up 21.40 seconds"
+        ],
+        "recoverable_errors": [
+          "WARNING: Failed to run module scripts_user (scripts in /var/lib/cloud/instance/scripts)"
+        ]
+      }
+    }
+  }
+}

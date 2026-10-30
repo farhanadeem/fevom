@@ -1,0 +1,15 @@
+{
+  "method": "storage.salvage",
+  "params": {
+    "dest": "/Users/ada/Salvage",
+    "volumes": [
+      "pgdata"
+    ],
+    "machines": [
+      "dev"
+    ]
+  },
+  "result": {
+    "id": 8
+  }
+}

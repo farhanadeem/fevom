@@ -1,0 +1,21 @@
+{
+  "method": "exec.start",
+  "params": {
+    "context": "engine",
+    "argv": [
+      "/usr/bin/ttycheck",
+      "--echo"
+    ],
+    "env": [
+      "TERM=xterm-256color"
+    ],
+    "dir": "/",
+    "tty": true,
+    "rows": 24,
+    "cols": 80
+  },
+  "result": {
+    "id": 7,
+    "token": "6f1c0e9a4b7d42c38a5e1f0b9c8d7e6f"
+  }
+}

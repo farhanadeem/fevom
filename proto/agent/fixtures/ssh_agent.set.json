@@ -1,0 +1,13 @@
+{
+  "method": "ssh_agent.set",
+  "params": {
+    "path": "/private/tmp/com.apple.launchd.Qx3mZ8aB1c/Listeners"
+  },
+  "result": {
+    "engine": true,
+    "machines": [
+      "dev",
+      "fed"
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 12,
+    "state": "starting",
+    "phase": "backoff",
+    "retry_in_ms": 2000,
+    "engine": "stopped",
+    "boot_id": "c40d19",
+    "since": "2026-10-08T12:20:00Z",
+    "pending_restart": [
+      "memory_mib"
+    ],
+    "warnings": [
+      "config.json could not be read and was set aside as config.json.corrupt-20261008T121900; defaults are in use"
+    ],
+    "last_exit": {
+      "code": -1,
+      "signal": "SIGKILL",
+      "at": "2026-10-08T12:19:59.9Z",
+      "expected": false,
+      "vmm_tail": [
+        "fevvm: 2 vCPUs, 4096 MiB, kernel entry 0x40080000, device tree 0x48000000; guest starts at +9.1 ms"
+      ],
+      "console_tail": [
+        "[   12.4ms] fev-init: ready"
+      ]
+    }
+  }
+}

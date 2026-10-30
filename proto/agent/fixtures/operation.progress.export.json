@@ -1,0 +1,15 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "id": 5,
+    "method": "machine.export",
+    "state": "done",
+    "phase": "archive",
+    "done_bytes": 1288490188,
+    "total_bytes": 1288490188,
+    "result": {
+      "bytes": 413138944
+    }
+  }
+}

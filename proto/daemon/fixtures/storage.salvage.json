@@ -1,0 +1,13 @@
+{
+  "method": "storage.salvage",
+  "params": {
+    "dest": "/Users/ada/Salvage"
+  },
+  "result": {
+    "id": "op-20261014T110000-4",
+    "method": "storage.salvage",
+    "target": "/Users/ada/Salvage",
+    "state": "running",
+    "started": "2026-10-14T11:00:00Z"
+  }
+}

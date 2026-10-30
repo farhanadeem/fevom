@@ -1,0 +1,11 @@
+diff --git a/Source/Tools/FEXInterpreter/ELFCodeLoader.h b/Source/Tools/FEXInterpreter/ELFCodeLoader.h
+--- a/Source/Tools/FEXInterpreter/ELFCodeLoader.h
++++ b/Source/Tools/FEXInterpreter/ELFCodeLoader.h
+@@ -677,6 +677,7 @@
+         };
+         memcpy(VSyscallPage, VSyscallCode, sizeof(VSyscallCode));
+         mprotect(VSyscallPage, FEXCore::Utils::FEX_PAGE_SIZE, PROT_READ);
++        Handler->AddVirtualPage(Thread, reinterpret_cast<uint64_t>(VSyscallPage), FEXCore::Utils::FEX_PAGE_SIZE, PROT_READ | PROT_EXEC);
+         VSyscallEntry = reinterpret_cast<uint64_t>(VSyscallPage);
+       }
+ 

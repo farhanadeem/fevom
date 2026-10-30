@@ -1,0 +1,14 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "id": 314,
+    "method": "k8s.reset",
+    "state": "done",
+    "phase": "deleting",
+    "result": {
+      "freed_bytes": 1291845632,
+      "archive_kept": false
+    }
+  }
+}

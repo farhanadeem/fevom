@@ -1,0 +1,2 @@
+PROTO  MAC                     GUEST           STATE   REACH  FOR                  NOTE
+tcp    0.0.0.0:8080,[::]:8080  127.0.0.1:8080  active  LAN    docker 3f2a9c1d7e10

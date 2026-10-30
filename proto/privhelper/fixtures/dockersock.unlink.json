@@ -1,0 +1,5 @@
+{
+  "method": "dockersock.unlink",
+  "params": {},
+  "result": {"state": "absent"}
+}

@@ -1,0 +1,7 @@
+{
+  "method": "events.unsubscribe",
+  "params": {
+    "subscription": 2
+  },
+  "result": {}
+}

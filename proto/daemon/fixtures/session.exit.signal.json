@@ -1,0 +1,9 @@
+{
+  "method": "session.exit",
+  "notification": true,
+  "params": {
+    "id": 10,
+    "exit_code": -1,
+    "signal": 9
+  }
+}

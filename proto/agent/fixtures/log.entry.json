@@ -1,0 +1,11 @@
+{
+  "method": "log.entry",
+  "notification": true,
+  "params": {
+    "subscription": 3,
+    "source": "kernel",
+    "time_ms": 12.5,
+    "level": 6,
+    "text": "Run /init as init process"
+  }
+}

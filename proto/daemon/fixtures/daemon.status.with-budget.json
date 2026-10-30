@@ -1,0 +1,21 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 23,
+    "state": "running",
+    "engine": "ready",
+    "boot_id": "e81a07",
+    "since": "2026-10-16T14:02:11.203114Z",
+    "pending_restart": [],
+    "data": {
+      "budget": {
+        "referenced_bytes": 6442450944,
+        "budget_bytes": 113816633344,
+        "limit_bytes": 120259084288,
+        "limited": true,
+        "at": "2026-10-16T14:02:13Z"
+      }
+    }
+  }
+}

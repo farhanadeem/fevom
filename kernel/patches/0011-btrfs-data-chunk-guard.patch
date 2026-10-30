@@ -1,0 +1,324 @@
+diff --git a/fs/btrfs/block-group.c b/fs/btrfs/block-group.c
+--- a/fs/btrfs/block-group.c
++++ b/fs/btrfs/block-group.c
+@@ -4392,6 +4392,8 @@
+ 		if (force < space_info->force_alloc)
+ 			force = space_info->force_alloc;
+ 		should_alloc = should_alloc_chunk(fs_info, space_info, force);
++		if (space_info->full && space_info->full_for_metadata && should_alloc)
++			space_info->full = false;
+ 		if (space_info->full) {
+ 			/* No more free physical space */
+ 			spin_unlock(&space_info->lock);
+@@ -4418,6 +4420,7 @@
+ 		} else {
+ 			/* Proceed with allocation */
+ 			space_info->chunk_alloc = true;
++			space_info->full_for_metadata = false;
+ 			spin_unlock(&space_info->lock);
+ 			wait_for_alloc = false;
+ 		}
+diff --git a/fs/btrfs/fs.h b/fs/btrfs/fs.h
+--- a/fs/btrfs/fs.h
++++ b/fs/btrfs/fs.h
+@@ -531,6 +531,8 @@
+ 	atomic64_t free_chunk_space;
+ 
+ 	atomic64_t freed_chunk_space;
++
++	atomic64_t data_chunk_pending;
+ 
+ 	/* Track ranges which are used by log trees blocks/logged data extents */
+ 	struct extent_io_tree excluded_extents;
+diff --git a/fs/btrfs/space-info.c b/fs/btrfs/space-info.c
+--- a/fs/btrfs/space-info.c
++++ b/fs/btrfs/space-info.c
+@@ -483,39 +483,150 @@
+ 	raw = atomic64_read(&fs_info->freed_chunk_space);
+ 	factor = btrfs_bg_type_to_factor(profile);
+ 	return factor ? div_u64(raw, factor) : raw;
++}
++
++static unsigned int btrfs_metadata_overcommit_guard = 1;
++
++static int metadata_overcommit_guard_set(const char *val, const struct kernel_param *kp)
++{
++	return param_set_uint_minmax(val, kp, 0, 1);
++}
++
++static const struct kernel_param_ops metadata_overcommit_guard_ops = {
++	.set = &metadata_overcommit_guard_set,
++	.get = &param_get_uint,
++};
++
++module_param_cb(metadata_overcommit_guard, &metadata_overcommit_guard_ops,
++		&btrfs_metadata_overcommit_guard, 0644);
++MODULE_PARM_DESC(metadata_overcommit_guard,
++		 "Refuse a data chunk that would take unallocated space overcommitted metadata reservations are counted against");
++
++static inline bool btrfs_metadata_overcommit_guard_on(void)
++{
++	return READ_ONCE(btrfs_metadata_overcommit_guard) != 0;
++}
++
++static atomic_long_t btrfs_metadata_overcommit_guard_refusals;
++
++static int metadata_overcommit_guard_refusals_get(char *buf, const struct kernel_param *kp)
++{
++	return sysfs_emit(buf, "%ld\n",
++			  atomic_long_read(&btrfs_metadata_overcommit_guard_refusals));
++}
++
++static const struct kernel_param_ops metadata_overcommit_guard_refusals_ops = {
++	.get = &metadata_overcommit_guard_refusals_get,
++};
++
++module_param_cb(metadata_overcommit_guard_refusals,
++		&metadata_overcommit_guard_refusals_ops, NULL, 0444);
++MODULE_PARM_DESC(metadata_overcommit_guard_refusals,
++		 "Data chunk allocations and device shrinks refused to keep metadata reservations covered");
++
++static u64 metadata_chunk_space_unallocated(struct btrfs_fs_info *fs_info, u64 profile)
++{
++	u64 avail;
++
++	if (!btrfs_get_per_profile_avail(fs_info, profile, &avail)) {
++		avail = div_u64(atomic64_read(&fs_info->free_chunk_space),
++				btrfs_bg_type_to_factor(profile));
++	}
++	avail -= min(avail, btrfs_account_freed_device_space(fs_info, profile));
++	avail -= min_t(u64, avail, atomic64_read(&fs_info->data_chunk_pending));
++	return avail;
++}
++
++static bool unallocated_loss_strands_metadata(struct btrfs_fs_info *fs_info,
++					      u64 dev_bytes)
++{
++	struct btrfs_space_info *meta;
++	bool stranded = false;
++	u64 profile, used, avail, loss;
++
++	lockdep_assert_held(&fs_info->chunk_mutex);
++
++	if (!btrfs_metadata_overcommit_guard_on())
++		return false;
++
++	meta = btrfs_find_space_info(fs_info, BTRFS_BLOCK_GROUP_METADATA);
++	if (!meta || (meta->flags & BTRFS_BLOCK_GROUP_DATA))
++		return false;
++
++	profile = btrfs_metadata_alloc_profile(fs_info);
++	loss = dev_bytes;
++	if (fs_info->fs_devices->rw_devices == 1)
++		loss = div_u64(dev_bytes + btrfs_bg_type_to_factor(profile) - 1,
++			       btrfs_bg_type_to_factor(profile));
++
++	spin_lock(&meta->lock);
++	used = btrfs_space_info_used(meta, true);
++	if (used > meta->total_bytes) {
++		avail = metadata_chunk_space_unallocated(fs_info, profile);
++		avail -= min(avail, loss);
++		if (btrfs_is_zoned(fs_info))
++			avail = ALIGN_DOWN(avail, fs_info->zone_size);
++		stranded = used - meta->total_bytes > avail;
++	}
++	if (!stranded)
++		atomic64_set(&fs_info->data_chunk_pending, loss);
++	spin_unlock(&meta->lock);
++
++	if (stranded)
++		atomic_long_inc(&btrfs_metadata_overcommit_guard_refusals);
++	return stranded;
++}
++
++void btrfs_unallocated_loss_done(struct btrfs_fs_info *fs_info)
++{
++	struct btrfs_space_info *meta;
++
++	lockdep_assert_held(&fs_info->chunk_mutex);
++
++	if (!atomic64_read(&fs_info->data_chunk_pending))
++		return;
++	meta = btrfs_find_space_info(fs_info, BTRFS_BLOCK_GROUP_METADATA);
++	if (!meta) {
++		atomic64_set(&fs_info->data_chunk_pending, 0);
++		return;
++	}
++	spin_lock(&meta->lock);
++	atomic64_set(&fs_info->data_chunk_pending, 0);
++	spin_unlock(&meta->lock);
++}
++
++bool btrfs_data_chunk_strands_metadata(struct btrfs_fs_info *fs_info,
++				       struct btrfs_space_info *data_sinfo,
++				       u64 dev_bytes)
++{
++	if (!unallocated_loss_strands_metadata(fs_info, dev_bytes))
++		return false;
++
++	spin_lock(&data_sinfo->lock);
++	data_sinfo->full_for_metadata = true;
++	spin_unlock(&data_sinfo->lock);
++	return true;
+ }
+ 
++bool btrfs_shrink_strands_metadata(struct btrfs_fs_info *fs_info, u64 dev_bytes)
++{
++	return unallocated_loss_strands_metadata(fs_info, dev_bytes);
++}
++
+ static u64 calc_available_free_space(const struct btrfs_space_info *space_info,
+ 				     enum btrfs_reserve_flush_enum flush)
+ {
+ 	struct btrfs_fs_info *fs_info = space_info->fs_info;
+-	bool has_per_profile;
+ 	u64 profile;
+ 	u64 avail;
+ 	u64 data_chunk_size;
+-	int factor;
+ 
+ 	if (space_info->flags & BTRFS_BLOCK_GROUP_SYSTEM)
+ 		profile = btrfs_system_alloc_profile(fs_info);
+ 	else
+ 		profile = btrfs_metadata_alloc_profile(fs_info);
+ 
+-	has_per_profile = btrfs_get_per_profile_avail(fs_info, profile, &avail);
+-	if (!has_per_profile) {
+-		avail = atomic64_read(&fs_info->free_chunk_space);
+-
+-		/*
+-		 * If we have dup, raid1 or raid10 then only half of the free
+-		 * space is actually usable.  For raid56, the space info used
+-		 * doesn't include the parity drive, so we don't have to
+-		 * change the math
+-		 */
+-		factor = btrfs_bg_type_to_factor(profile);
+-		avail = div_u64(avail, factor);
+-		if (avail == 0)
+-			return 0;
+-	}
+-	avail -= min(avail, btrfs_account_freed_device_space(fs_info, profile));
++	avail = metadata_chunk_space_unallocated(fs_info, profile);
+ 
+ 	data_chunk_size = calc_effective_data_chunk_size(fs_info);
+ 
+@@ -1478,6 +1589,7 @@
+ 	struct btrfs_fs_info *fs_info = space_info->fs_info;
+ 	u64 last_tickets_id;
+ 	enum btrfs_flush_state flush_state = 0;
++	bool alloc_again = false;
+ 
+ 	spin_lock(&space_info->lock);
+ 	if (list_empty(&space_info->tickets)) {
+@@ -1488,6 +1600,7 @@
+ 	last_tickets_id = space_info->tickets_id;
+ 	spin_unlock(&space_info->lock);
+ 
++alloc_chunks:
+ 	while (!space_info->full) {
+ 		flush_space(space_info, U64_MAX, ALLOC_CHUNK_FORCE, false);
+ 		spin_lock(&space_info->lock);
+@@ -1529,6 +1642,7 @@
+ 					space_info->flush = false;
+ 			} else {
+ 				flush_state = 0;
++				alloc_again = btrfs_metadata_overcommit_guard_on();
+ 			}
+ 
+ 			/* Something happened, fail everything and bail. */
+@@ -1537,6 +1651,10 @@
+ 
+ 		}
+ 		spin_unlock(&space_info->lock);
++		if (alloc_again) {
++			alloc_again = false;
++			goto alloc_chunks;
++		}
+ 	}
+ 	return;
+ 
+diff --git a/fs/btrfs/space-info.h b/fs/btrfs/space-info.h
+--- a/fs/btrfs/space-info.h
++++ b/fs/btrfs/space-info.h
+@@ -173,6 +173,7 @@
+ 
+ 	bool full;		/* indicates that we cannot allocate any more
+ 				   chunks for this space */
++	bool full_for_metadata;
+ 	bool chunk_alloc;	/* set if we are allocating a chunk */
+ 
+ 	bool flush;		/* set if we are trying to make space */
+@@ -314,6 +315,11 @@
+ void btrfs_try_granting_tickets(struct btrfs_space_info *space_info);
+ bool btrfs_can_overcommit(const struct btrfs_space_info *space_info, u64 bytes,
+ 			  enum btrfs_reserve_flush_enum flush);
++bool btrfs_data_chunk_strands_metadata(struct btrfs_fs_info *fs_info,
++				       struct btrfs_space_info *data_sinfo,
++				       u64 dev_bytes);
++bool btrfs_shrink_strands_metadata(struct btrfs_fs_info *fs_info, u64 dev_bytes);
++void btrfs_unallocated_loss_done(struct btrfs_fs_info *fs_info);
+ 
+ static inline void btrfs_space_info_free_bytes_may_use(
+ 				struct btrfs_space_info *space_info,
+diff --git a/fs/btrfs/volumes.c b/fs/btrfs/volumes.c
+--- a/fs/btrfs/volumes.c
++++ b/fs/btrfs/volumes.c
+@@ -5272,10 +5272,7 @@
+ 
+ 	mutex_lock(&fs_info->chunk_mutex);
+ 
+-	btrfs_device_set_total_bytes(device, new_size);
+ 	if (test_bit(BTRFS_DEV_STATE_WRITEABLE, &device->dev_state)) {
+-		device->fs_devices->total_rw_bytes -= diff;
+-
+ 		/*
+ 		 * The new free_chunk_space is new_size - used, so we have to
+ 		 * subtract the delta of the old free_chunk_space which included
+@@ -5287,10 +5284,23 @@
+ 				    (new_size - device->bytes_used);
+ 		else
+ 			free_diff = old_size - device->bytes_used;
++
++		if (btrfs_shrink_strands_metadata(fs_info, free_diff)) {
++			mutex_unlock(&fs_info->chunk_mutex);
++			btrfs_end_transaction(trans);
++			btrfs_free_path(path);
++			return -ENOSPC;
++		}
++	}
++
++	btrfs_device_set_total_bytes(device, new_size);
++	if (test_bit(BTRFS_DEV_STATE_WRITEABLE, &device->dev_state)) {
++		device->fs_devices->total_rw_bytes -= diff;
+ 		atomic64_sub(free_diff, &fs_info->free_chunk_space);
+ 	}
+ 
+ 	btrfs_update_per_profile_avail(fs_info);
++	btrfs_unallocated_loss_done(fs_info);
+ 	/*
+ 	 * Once the device's size has been set to the new size, ensure all
+ 	 * in-memory chunks are synced to disk so that the loop below sees them
+@@ -6130,6 +6140,7 @@
+ 	struct btrfs_fs_info *info = trans->fs_info;
+ 	struct btrfs_fs_devices *fs_devices = info->fs_devices;
+ 	struct btrfs_device_info AUTO_KFREE(devices_info);
++	struct btrfs_block_group *bg;
+ 	struct alloc_chunk_ctl ctl;
+ 	int ret;
+ 
+@@ -6168,6 +6179,15 @@
+ 	ret = decide_stripe_size(fs_devices, &ctl, devices_info);
+ 	if (ret < 0)
+ 		return ERR_PTR(ret);
++
++	if ((type & BTRFS_BLOCK_GROUP_DATA) && !(type & BTRFS_BLOCK_GROUP_METADATA)) {
++		if (btrfs_data_chunk_strands_metadata(info, space_info,
++						      ctl.stripe_size * ctl.num_stripes))
++			return ERR_PTR(-ENOSPC);
++		bg = create_chunk(trans, &ctl, devices_info);
++		btrfs_unallocated_loss_done(info);
++		return bg;
++	}
+ 
+ 	return create_chunk(trans, &ctl, devices_info);
+ }

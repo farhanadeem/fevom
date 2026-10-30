@@ -1,0 +1,195 @@
+diff --git a/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp b/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp
+--- a/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp
++++ b/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp
+@@ -404,9 +404,7 @@
+     uintptr_t MappedBegin = (AllocatedOffset - RegionBegin) >> FEXCore::Utils::FEX_PAGE_SHIFT;
+     size_t PagesSet {};
+ 
+-    for (size_t i = 0; i < NumberOfPages; ++i) {
+-      PagesSet += LiveRegion->UsedPages.TestAndSet(MappedBegin + i) == false;
+-    }
++    PagesSet = LiveRegion->UsedPages.SetRange(MappedBegin, NumberOfPages);
+ 
+     // Change our last allocation region
+     LiveRegion->LastPageAllocation = MappedBegin + NumberOfPages;
+@@ -462,9 +460,7 @@
+       uint32_t SlabPageBegin = (PtrBegin - RegionBegin) >> FEXCore::Utils::FEX_PAGE_SHIFT;
+       uint64_t PagesToFree = length >> FEXCore::Utils::FEX_PAGE_SHIFT;
+ 
+-      for (size_t i = 0; i < PagesToFree; ++i) {
+-        FreedPages += (*it)->UsedPages.TestAndClear(SlabPageBegin + i) ? 1 : 0;
+-      }
++      FreedPages = (*it)->UsedPages.ClearRange(SlabPageBegin, PagesToFree);
+ 
+       if (FreedPages != 0) {
+         // If we were contiuous freeing then make sure to give back the physical address space
+diff --git a/FEXCore/Source/Utils/Allocator/FlexBitSet.h b/FEXCore/Source/Utils/Allocator/FlexBitSet.h
+--- a/FEXCore/Source/Utils/Allocator/FlexBitSet.h
++++ b/FEXCore/Source/Utils/Allocator/FlexBitSet.h
+@@ -4,6 +4,7 @@
+ #include <FEXCore/Utils/MathUtils.h>
+ #include <FEXCore/Utils/LogManager.h>
+ 
++#include <bit>
+ #include <cstddef>
+ #include <cstdint>
+ #include <cstring>
+@@ -53,15 +54,72 @@
+     bool FoundHole;
+   };
+ 
+-  // TODO: Make {Forward,Backward}ScanForRange faster
+-  // Currently these functions test a single bit at a time, which is fairly costly.
+-  // The compiler emits a full element load per iteration, wasting a bunch of time on loads.
+-  // If we change these functions to have a pre-amble and post-amble to align the primary loop to the element size then this can go
+-  // significantly faster.
+-  //
+-  // Once the element scanning is aligned to the element size, we can then use native count leading zero(CLZ) and count trailing zero(CTZ)
+-  // instructions on a full element to scan uint64_t elements per loop iteration.
+ 
++  static T ElementMask(size_t Lo, size_t Hi) {
++    const T High = Hi == MinimumSizeBits ? ~T(0) : (T(1) << Hi) - 1;
++    return High & (~T(0) << Lo);
++  }
++
++  template<bool Value>
++  size_t FindFirst(size_t Lo, size_t Hi) const {
++    while (Lo < Hi) {
++      const size_t Index = Lo / MinimumSizeBits;
++      const size_t Base = Index * MinimumSizeBits;
++      const size_t End = Hi - Base < MinimumSizeBits ? Hi - Base : MinimumSizeBits;
++      T Bits = Value ? Memory[Index] : ~Memory[Index];
++      Bits &= ElementMask(Lo - Base, End);
++      if (Bits) {
++        return Base + std::countr_zero(Bits);
++      }
++      Lo = Base + MinimumSizeBits;
++    }
++    return ~0ULL;
++  }
++
++  template<bool Value>
++  size_t FindLast(size_t Lo, size_t Hi) const {
++    while (Hi > Lo) {
++      const size_t Index = (Hi - 1) / MinimumSizeBits;
++      const size_t Base = Index * MinimumSizeBits;
++      const size_t Begin = Lo > Base ? Lo - Base : 0;
++      T Bits = Value ? Memory[Index] : ~Memory[Index];
++      Bits &= ElementMask(Begin, Hi - Base);
++      if (Bits) {
++        return Base + (MinimumSizeBits - 1 - std::countl_zero(Bits));
++      }
++      Hi = Base;
++    }
++    return ~0ULL;
++  }
++
++  size_t SetRange(size_t Begin, size_t Count) {
++    size_t Changed = 0;
++    for (size_t Lo = Begin, Hi = Begin + Count; Lo < Hi;) {
++      const size_t Index = Lo / MinimumSizeBits;
++      const size_t Base = Index * MinimumSizeBits;
++      const size_t End = Hi - Base < MinimumSizeBits ? Hi - Base : MinimumSizeBits;
++      const T Mask = ElementMask(Lo - Base, End);
++      Changed += std::popcount(T(~Memory[Index] & Mask));
++      Memory[Index] |= Mask;
++      Lo = Base + End;
++    }
++    return Changed;
++  }
++
++  size_t ClearRange(size_t Begin, size_t Count) {
++    size_t Changed = 0;
++    for (size_t Lo = Begin, Hi = Begin + Count; Lo < Hi;) {
++      const size_t Index = Lo / MinimumSizeBits;
++      const size_t Base = Index * MinimumSizeBits;
++      const size_t End = Hi - Base < MinimumSizeBits ? Hi - Base : MinimumSizeBits;
++      const T Mask = ElementMask(Lo - Base, End);
++      Changed += std::popcount(T(Memory[Index] & Mask));
++      Memory[Index] &= ~Mask;
++      Lo = Base + End;
++    }
++    return Changed;
++  }
++
+   // Implementation details:
+   // Template argument WantUnset
+   // Used to determine if the desired range is for set or unset ranges.
+@@ -80,30 +138,18 @@
+     const size_t FinalElement = MinimumElement + ElementCount - 1;
+ 
+     for (size_t CurrentPage = BeginningElement; CurrentPage >= FinalElement;) {
+-      size_t Remaining = ElementCount;
+       LOGMAN_THROW_A_FMT(CurrentPage <= BeginningElement && CurrentPage >= FinalElement, "BackwardScanForRange: Scanning less than "
+                                                                                          "available range");
+-
+-      while (Remaining) {
+-        if (this->Get(CurrentPage - Remaining + 1) == WantUnset) {
+-          // Has an intersecting range
+-          break;
+-        }
+-        --Remaining;
+-      }
+-
+-      if (Remaining) {
+-        // If we found at least one Element hole then track that
+-        if (Remaining != ElementCount) {
+-          FoundHole = true;
+-        }
+-
+-        // Didn't find a slab range
+-        CurrentPage -= Remaining;
+-      } else {
++      const size_t WindowBegin = CurrentPage - ElementCount + 1;
++      const size_t Intersect = FindFirst<WantUnset>(WindowBegin, CurrentPage + 1);
++      if (Intersect == ~0ULL) {
+         // We have a slab range
+-        return BitsetScanResults {CurrentPage - ElementCount + 1, FoundHole};
++        return BitsetScanResults {WindowBegin, FoundHole};
+       }
++      if (Intersect != WindowBegin) {
++        FoundHole = true;
++      }
++      CurrentPage = Intersect - 1;
+     }
+ 
+     return BitsetScanResults {~0ULL, FoundHole};
+@@ -122,32 +168,17 @@
+     const size_t FinalElement = ElementsInSet - ElementCount + 1;
+ 
+     for (size_t CurrentElement = BeginningElement; CurrentElement <= FinalElement;) {
+-      // If we have enough free space, check if we have enough free pages that are contiguous
+-      size_t Remaining = ElementCount;
+-
+       LOGMAN_THROW_A_FMT(CurrentElement >= BeginningElement && CurrentElement <= FinalElement, "ForwardScanForRange: Scanning less than "
+                                                                                                "available range");
+-
+-      while (Remaining) {
+-        if (this->Get(CurrentElement + Remaining - 1) == WantUnset) {
+-          // Has an intersecting range
+-          break;
+-        }
+-        --Remaining;
+-      }
+-
+-      if (Remaining) {
+-        // If we found at least one Element hole then track that
+-        if (Remaining != ElementCount) {
+-          FoundHole = true;
+-        }
+-
+-        // Didn't find a slab range
+-        CurrentElement += Remaining;
+-      } else {
++      const size_t Intersect = FindLast<WantUnset>(CurrentElement, CurrentElement + ElementCount);
++      if (Intersect == ~0ULL) {
+         // We have a slab range
+         return BitsetScanResults {CurrentElement, FoundHole};
+       }
++      if (Intersect != CurrentElement + ElementCount - 1) {
++        FoundHole = true;
++      }
++      CurrentElement = Intersect + 1;
+     }
+ 
+     return BitsetScanResults {~0ULL, FoundHole};

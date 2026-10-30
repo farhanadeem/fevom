@@ -1,0 +1,2 @@
+data_allow_backup: true
+memory_mib: 4096 (waits for "fev restart")

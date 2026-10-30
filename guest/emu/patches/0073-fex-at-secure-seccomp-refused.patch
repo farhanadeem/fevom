@@ -1,0 +1,15 @@
+diff --git a/Source/Tools/FEXInterpreter/FEXInterpreter.cpp b/Source/Tools/FEXInterpreter/FEXInterpreter.cpp
+--- a/Source/Tools/FEXInterpreter/FEXInterpreter.cpp
++++ b/Source/Tools/FEXInterpreter/FEXInterpreter.cpp
+@@ -376,6 +376,11 @@
+   int FEXFD {-1};
+   const char* FEXFDStr = getenv(Env);
+   if (FEXFDStr && getauxval(AT_SECURE)) {
++    if (std::string_view {Env} == "FEX_SECCOMPFD") {
++      static const char Msg[] = "FEX: a program with raised credentials (AT_SECURE) was started under a seccomp filter, which cannot be carried to it: refused\n";
++      [[maybe_unused]] auto _ = ::write(STDERR_FILENO, Msg, sizeof(Msg) - 1);
++      _exit(126);
++    }
+     unsetenv(Env);
+     return -1;
+   }

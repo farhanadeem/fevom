@@ -1,0 +1,18 @@
+{
+  "method": "machines.create",
+  "params": {
+    "name": "sandbox",
+    "distro": "ubuntu",
+    "isolated": true,
+    "isolate_network": true,
+    "mounts": ["/Users/ada/src/project", "/Users/ada/Downloads/data:/data"]
+  },
+  "result": {
+    "id": "op-20261016T141500-4",
+    "method": "machines.create",
+    "target": "sandbox",
+    "state": "running",
+    "phase": "verify",
+    "started": "2026-10-16T14:15:00Z"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "method": "https.trust",
+  "params": {"action": "install"},
+  "result": {
+    "enabled": true,
+    "trust": "declined",
+    "root": "9f2c4a7e1b3d5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d8e",
+    "key": "signer"
+  }
+}

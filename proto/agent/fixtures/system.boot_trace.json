@@ -1,0 +1,32 @@
+{
+  "method": "system.boot_trace",
+  "params": {
+    "wait": true
+  },
+  "result": {
+    "init_start_ms": 21.5,
+    "ready_ms": 30.25,
+    "now_ms": 41.75,
+    "engine_start_ms": 29.5,
+    "engine_ready_ms": 912.5,
+    "stages": [
+      {
+        "name": "mounts",
+        "start_ms": 21.6,
+        "end_ms": 22.1
+      },
+      {
+        "name": "data-disk",
+        "start_ms": 22.1,
+        "end_ms": 22.2,
+        "skipped": "no data disk attached"
+      },
+      {
+        "name": "network",
+        "start_ms": 22.1,
+        "end_ms": 24.0,
+        "error": "no uplink interface"
+      }
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "method": "trust.set",
+  "params": {
+    "roots": [
+      "-----BEGIN CERTIFICATE-----\nMIIBajCCARCgAwIBAgIUdi4e+csIYfeNXZqulqUauaKTQ2UwCgYIKoZIzj0EAwIw\nGzEZMBcGA1UEAxMQZmV2LWZpeHR1cmUtcm9vdDAeFw0yNjEwMTUxNzI2MjBaFw0z\nNjEwMTIxNzI2MjBaMBsxGTAXBgNVBAMTEGZldi1maXh0dXJlLXJvb3QwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAAQdfUE6OCQTXFl3/OaxRrrYLLYpf4YNlS6PHmJ4\nyFIGgfgeazkmKtdVv3Uux+j1Q29ou/vCo1joDQKrQySJh6UGozIwMDAPBgNVHRMB\nAf8EBTADAQH/MB0GA1UdDgQWBBRRESaAttPazP+J/hR1PnsB2XZmXDAKBggqhkjO\nPQQDAgNIADBFAiEAotE9M0dwJHW+hG6RPgGqmXTvoPPd9oAihgHmgXTdxBYCIG8E\nc5rTA+CH0x5scOQvTqYQdS1i/Mqy4qDAELzw8I9F\n-----END CERTIFICATE-----\n"
+    ]
+  },
+  "result": {
+    "count": 1,
+    "digest": "63f5823f24a9a0ec30c93655d1b1996fe7b2511a8ae6190bd377cd9398350ada"
+  }
+}

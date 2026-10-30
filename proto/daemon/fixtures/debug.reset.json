@@ -1,0 +1,7 @@
+{
+  "method": "debug.reset",
+  "params": {},
+  "result": {
+    "freed_bytes": 320864256
+  }
+}

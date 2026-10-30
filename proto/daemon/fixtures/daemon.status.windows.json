@@ -1,0 +1,18 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 9,
+    "state": "running",
+    "engine": "ready",
+    "boot_id": "c40d19",
+    "since": "2026-10-10T12:00:00.4Z",
+    "pending_restart": [],
+    "windows": {
+      "data_disk": {
+        "state": "on",
+        "size_bytes": 274877906944
+      }
+    }
+  }
+}

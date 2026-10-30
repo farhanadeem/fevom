@@ -1,0 +1,94 @@
+Fevom: licences and notices
+===========================
+
+This folder is part of Fevom.app (build @BUILD@). It holds the licence text
+and notices of every third-party program and library fev ships, and says
+how to get the source code of the ones whose licences ask for it.
+
+What fev is made of
+---------------------
+
+On the Mac (Contents/MacOS, Contents/Helpers):
+  - fev's own programs: the app, fev (the CLI), fevd, fev-k8s,
+    fevvm, fev-privhelper, fev-keysigner. The Go, Rust and Swift libraries
+    linked into them are listed below with their licences (mac/go,
+    mac/rust, mac/swift); Go's own runtime and standard library is in
+    mac/go/go/LICENSE.
+  - the client tools, upstream's release binaries, unmodified
+    (Contents/MacOS/xbin; mac/docker-tools): the Docker CLI, Compose,
+    Buildx, the keychain credential helper, and kubectl (Apache-2.0).
+
+In the Linux VM (Contents/Resources/guest):
+  - Image: the Linux kernel, GPL-2.0 with the syscall note (guest/kernel),
+    built from the upstream release with fev's patches. Its source: see
+    SOURCE-OFFER.txt.
+  - init.cpio: fev-init, fev's own, with the Go libraries in guest/go.
+  - system.img: the Docker engine, Docker's static release binaries,
+    unmodified (dockerd, containerd, runc, docker-init, docker-proxy;
+    guest/engine), into which Docker linked glibc (LGPL-2.1) and runc
+    links libseccomp (LGPL-2.1); iptables, nftables, procps and their
+    libraries, Debian's packages unmodified, each with its Debian copyright
+    file (guest/debian); btrfs-progs and busybox, built unmodified from
+    their release sources and linked statically by their own builds with
+    glibc (LGPL-2.1) and, into btrfs-progs, libblkid (LGPL-2.1), libuuid
+    (BSD-3-Clause), zlib (Zlib), lzo (GPL-2.0) and zstd (BSD-3-Clause),
+    Debian's builds of each (guest/btrfs-progs, guest/busybox, with each
+    library's Debian copyright file in their linked folders); the CA
+    bundle (MPL-2.0, guest/cacert); and the x86 translator FEX, which
+    fev patches and which links glibc and libstdc++ statically
+    (guest/fex; see FEX below). The same
+    texts are inside the image, at /licenses, as the guest sees it.
+
+Every input's exact version, licence and SHA-256 is in inputs.lock beside
+this file.
+
+The GPL and LGPL parts
+----------------------
+
+The programs under the GPL (the kernel, btrfs-progs, busybox, iptables,
+nftables, procps) are separate programs, run as they are; fev's own
+programs do not link them. The libraries under the LGPL are linked into
+those programs, not into fev's: glibc and libseccomp inside Docker's
+binaries as Docker built them; glibc and libblkid linked statically into
+btrfs-progs, and glibc into busybox, by fev's build of their unmodified
+release sources (guest/sysimage in fev's source tree, which can relink
+them against a changed library); and glibc and libstdc++ in FEX, below.
+SOURCE-OFFER.txt says how to get the corresponding source of all of them.
+
+Kubernetes
+----------
+
+Nothing of Kubernetes but kubectl (above) is in fev. Your first start of
+Kubernetes downloads k3s v1.37.1+k3s1 and its images archive from k3s's
+release on github.com (or from beside kubernetes.images_url), each checked
+against the SHA-256 inputs.lock pins, and fev runs them unmodified, as
+separate programs, under their own licences: k3s's programs Apache-2.0,
+with musl (MIT) and, in its runc, libseccomp (LGPL-2.1) linked by the k3s
+project; k3s-root v0.15.2's userland inside k3s (busybox, iptables,
+nftables, iproute2 and more: GPL-2.0; coreutils, findutils and
+fuse-overlayfs: GPL-3.0; inputs.lock's "inside" lines list each); and the
+images (pause, CoreDNS, Traefik, local-path, metrics-server, klipper and
+busybox), each under its upstream's licence. k3s's release carries their
+texts and its source.
+
+FEX, the x86 translator
+-----------------------
+
+FEX (MIT) is patched by fev and linked statically with glibc (LGPL-2.1)
+and libstdc++ (GPL-3.0 with the GCC Runtime Library Exception). So that
+you can change glibc and relink FEX with it:
+  1. glibc's source: the Debian source package named in guest/fex/BUILD,
+     which SOURCE-OFFER.txt offers;
+  2. FEX's source with its build: guest/emu in fev's source tree, the tag
+     of this version at https://github.com/farhanadeem/fevom (build.sh,
+     sources.lock naming FEX's tag and submodules, and fev's patches),
+     from which FEX is built and can be relinked against another glibc;
+     SOURCE-OFFER.txt offers it too;
+  3. the licences' texts: guest/fex/glibc and guest/fex/libstdc++;
+  4. TERMS.txt: nothing in fev's terms forbids changing FEX for your own
+     use or reverse engineering it to debug such changes.
+
+Index
+-----
+
+@INDEX@

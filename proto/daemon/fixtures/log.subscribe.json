@@ -1,0 +1,14 @@
+{
+  "method": "log.subscribe",
+  "params": {
+    "sources": [
+      "vmm",
+      "kernel",
+      "init"
+    ],
+    "backlog": 200
+  },
+  "result": {
+    "subscription": 3
+  }
+}

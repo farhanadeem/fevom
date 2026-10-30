@@ -1,0 +1,44 @@
+{
+  "method": "k8s.status",
+  "params": {},
+  "result": {
+    "enabled": true,
+    "state": "running",
+    "ready": true,
+    "node": "fev",
+    "version": "v1.37.1+k3s1",
+    "ranges": {
+      "load_balancers": "198.19.8.0/22",
+      "pods": "198.19.16.0/20",
+      "services": "198.19.32.0/20",
+      "dns": "198.19.32.10"
+    },
+    "range_conflicts": [
+      "pods 198.19.16.0/20 overlaps this Mac's network 198.19.20.0/24 (en0); fev reset chooses a new base"
+    ],
+    "api": {
+      "address": "127.0.0.1:6444",
+      "note": "127.0.0.1:6443 is held by another program on this Mac"
+    },
+    "kubeconfig": {
+      "path": "/Users/tester/.kube/config",
+      "context": "fev",
+      "present": true
+    },
+    "cluster_local": {
+      "answered": false,
+      "note": "cluster.local is answered by another program's resolver"
+    },
+    "port_conflicts": [
+      "127.0.0.1:30080 (tcp): already in use on this Mac"
+    ],
+    "archive": {
+      "version": "v1.37.1+k3s1",
+      "cached": true,
+      "bytes": 440213504,
+      "size": 250217791,
+      "url": "https://github.com/k3s-io/k3s/releases/download/v1.37.1%2Bk3s1/k3s-airgap-images-arm64.tar.zst"
+    },
+    "cost": "Kubernetes uses about a tenth of a core and 2 GiB of memory while on"
+  }
+}

@@ -1,0 +1,22 @@
+source docker-engine 29.9.0 Apache-2.0 811f6eee271678fc98dbe5c4d896c00fc5fe2daa4f7a37069c17abc036eab85b https://download.docker.com/linux/static/stable/aarch64/docker-29.9.0.tgz
+linked docker-engine tini MIT
+linked docker-engine glibc LGPL-2.1-or-later
+linked docker-engine libseccomp LGPL-2.1-only
+source cacert 2026-09-25 MPL-2.0 a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505 https://curl.se/ca/cacert-2026-09-25.pem
+source iptables 1.8.11-2 GPL-2.0-only 441a3c4b202f83cb1c2609c9eff768229ce991c2f49bea37416168028bc23e95 http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/i/iptables/iptables_1.8.11-2_arm64.deb
+source libxtables12 1.8.11-2 GPL-2.0-only b200a559a4ae1b4ebcee4fb0fcaef6a16ef01abbe3da8887de15e800b1a6440d http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/i/iptables/libxtables12_1.8.11-2_arm64.deb
+source nftables 1.1.3-1 GPL-2.0-only 6cced5fccfbd80a25dfbd4bd17cc16372d08cb76c9d1159532ba0f668aa77c37 http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/n/nftables/nftables_1.1.3-1_arm64.deb
+source libnftables1 1.1.3-1 GPL-2.0-only 260b0790a8f567ef27d293e15c722d867de113d579c330be17d13354cd61c356 http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/n/nftables/libnftables1_1.1.3-1_arm64.deb
+source libnftnl11 1.2.9-1 GPL-2.0-or-later 070278465783af9f3c38a9465d3dec8ad51468a87b8c3a52f6451d4e95e08875 http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/libn/libnftnl/libnftnl11_1.2.9-1_arm64.deb
+source libmnl0 1.0.5-3 LGPL-2.1-or-later f21bb29056e9ede0031cc411ffa3b1272858fa4b950e1cd9e50756c5c2ece97f http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/libm/libmnl/libmnl0_1.0.5-3_arm64.deb
+source libgmp10 6.3.0+dfsg-3 LGPL-3.0-or-later_OR_GPL-2.0-or-later a27bbc27f119161ea9702c8dd66f54131cdf0d2ca73000f50ea91ef2fdfef0fb http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/g/gmp/libgmp10_6.3.0%2bdfsg-3_arm64.deb
+source libjansson4 2.14-2+b3 MIT 7938472b1ddfa8b0c8f58d5f44406ae7a77a342dbb502a02f6bf292b4f853ab0 http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/j/jansson/libjansson4_2.14-2%2bb3_arm64.deb
+source libedit2 3.1-20250104-1 BSD-3-Clause 496c31df89fac9cb7e98102fcc21daf887376dcd9914f6322c86dd5bd4360ff1 http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/libe/libedit/libedit2_3.1-20250104-1_arm64.deb
+source libtinfo6 6.5+20250216-2 X11 2a747f7fff3c2347c357387a7133df997410f07ba1b1df1a1461a97bd7fbc2fc http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/n/ncurses/libtinfo6_6.5%2b20250216-2_arm64.deb
+source libbsd0 0.12.2-2 BSD-3-Clause 6827c1b3ad8dcbf3478803f9150359433e3376a3bde01c4503888a22eb3924e3 http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/libb/libbsd/libbsd0_0.12.2-2_arm64.deb
+source libmd0 1.1.0-2+b1 BSD-3-Clause 772e86842fd3fa1816a0cfee4833a73996aaa550461491543b886b9c8f999052 http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/libm/libmd/libmd0_1.1.0-2%2bb1_arm64.deb
+source libc6 2.41-12+deb13u4 LGPL-2.1-or-later 8784eda966b189c777a384dac5ce009e8fc9b52d006926c5a013e7fa8aa688cc http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/g/glibc/libc6_2.41-12%2bdeb13u4_arm64.deb
+source procps 2:4.0.4-9 GPL-2.0-or-later 9afd4ad2e8da92322715114fb9555c63ce92f6c72bf72867e76ab2d6a7a3b541 http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/p/procps/procps_4.0.4-9_arm64.deb
+source libproc2-0 2:4.0.4-9 LGPL-2.1-or-later e81069b58fe82223c71fcd74c760cb0fd3b0e61792fbaf2e5675fd948dc16dba http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/p/procps/libproc2-0_4.0.4-9_arm64.deb
+source libsystemd0 257.13-1~deb13u1 LGPL-2.1-or-later d2f63c408549c29eaefb6f4c948393edce99f45ee8e43c991391bef63fb7d54b http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/s/systemd/libsystemd0_257.13-1%7edeb13u1_arm64.deb
+source libcap2 1:2.75-10+deb13u1+b3 BSD-3-Clause_OR_GPL-2.0-only 863aa5b9cdf6f80010b48982d4639126b09a89eeef2c0c5c7be226297c811581 http://snapshot.debian.org/archive/debian/20261005T000000Z/pool/main/libc/libcap2/libcap2_2.75-10%2bdeb13u1%2bb3_arm64.deb

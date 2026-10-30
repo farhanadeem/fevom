@@ -1,0 +1,25 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "operation": {
+      "id": "op-20261019T101600-8",
+      "method": "volumes.import",
+      "target": "pgdata2",
+      "state": "done",
+      "phase": "archive",
+      "done_bytes": 9437184,
+      "total_bytes": 9437184,
+      "started": "2026-10-19T10:16:00Z",
+      "ended": "2026-10-19T10:16:02Z",
+      "result": {
+        "name": "pgdata2",
+        "labels": {
+          "com.docker.compose.project": "shop"
+        },
+        "files": 1288
+      }
+    }
+  }
+}

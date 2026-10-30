@@ -1,0 +1,7 @@
+{
+  "method": "view.removed",
+  "notification": true,
+  "params": {
+    "paths": ["docker/containers/web", "docker/containers/web/data"]
+  }
+}

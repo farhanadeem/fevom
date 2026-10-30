@@ -1,0 +1,13 @@
+{
+  "method": "view.objects",
+  "params": {},
+  "result": {
+    "objects": [
+      {"kind": "container", "name": "web", "path": "docker/containers/web", "fsid": 290217513, "uid": 0, "gid": 0, "mounted": true},
+      {"kind": "bind", "name": "/data", "path": "docker/containers/web/data", "fsid": 1408113427, "uid": 0, "gid": 0, "mounted": true},
+      {"kind": "image", "name": "nginx:1.29", "path": "docker/images/nginx:1.29", "fsid": 559102991, "uid": 0, "gid": 0, "read_only": true, "mounted": false},
+      {"kind": "volume", "name": "pgdata", "path": "docker/volumes/pgdata", "fsid": 868712007, "uid": 0, "gid": 0, "mounted": true},
+      {"kind": "machine", "name": "ubuntu", "path": "ubuntu", "fsid": 1102735310, "uid": 501, "gid": 501, "mounted": true}
+    ]
+  }
+}

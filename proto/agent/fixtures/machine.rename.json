@@ -1,0 +1,21 @@
+{
+  "method": "machine.rename",
+  "params": {
+    "name": "dev2",
+    "new_name": "web"
+  },
+  "result": {
+    "name": "web",
+    "state": "stopped",
+    "image": {
+      "distro": "ubuntu",
+      "release": "questing",
+      "arch": "arm64",
+      "variant": "cloud",
+      "serial": "20261014_07:42"
+    },
+    "uuid": "45c48cce-2e2d-4fbd-a1b2-c3d4e5f60718",
+    "init": "systemd",
+    "disk_bytes": 0
+  }
+}

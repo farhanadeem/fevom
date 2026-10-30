@@ -1,0 +1,23 @@
+{
+  "method": "debug.start",
+  "params": {
+    "target": "api",
+    "context": "work-remote",
+    "env": [
+      "TERM=xterm-256color",
+      "COLORTERM=truecolor"
+    ],
+    "tty": true,
+    "rows": 40,
+    "cols": 120
+  },
+  "result": {
+    "id": 31,
+    "token": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+    "kind": "remote",
+    "target_id": "",
+    "name": "api",
+    "read_only": false,
+    "notes": ["on work-remote (its own engine); setup messages follow in the shell"]
+  }
+}

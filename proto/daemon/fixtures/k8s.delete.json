@@ -1,0 +1,9 @@
+{
+  "method": "k8s.delete",
+  "params": {
+    "kind": "Pod",
+    "namespace": "default",
+    "name": "web-7c9d8b6f5-x2kqz"
+  },
+  "result": {}
+}

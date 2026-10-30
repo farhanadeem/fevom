@@ -1,0 +1,245 @@
+{
+  "method": "config.describe",
+  "params": {},
+  "result": {
+    "keys": [
+      {
+        "key": "cpu",
+        "type": "int",
+        "default": 10,
+        "apply": "vm_restart",
+        "description": "The most CPU cores the VM can use",
+        "min": 1,
+        "max": 10
+      },
+      {
+        "key": "memory_mib",
+        "type": "int",
+        "default": 8192,
+        "apply": "vm_restart",
+        "description": "The most memory the VM can use, in MiB. Memory it isn't using goes back to your Mac",
+        "min": 1024,
+        "max": 32768
+      },
+      {
+        "key": "docker.set_context",
+        "type": "bool",
+        "default": true,
+        "apply": "live",
+        "description": "Create the fev Docker context and select it, so docker commands use Fevom"
+      },
+      {
+        "key": "data_allow_backup",
+        "type": "bool",
+        "default": false,
+        "apply": "live",
+        "description": "Include Fevom's data in Time Machine backups. It is one large disk image, which can make backups much larger"
+      },
+      {
+        "key": "network.publish_lan",
+        "type": "bool",
+        "default": true,
+        "apply": "live",
+        "description": "Let other devices on your network reach published ports. Ports published on 127.0.0.1 or ::1 stay on this Mac"
+      },
+      {
+        "key": "files.share",
+        "type": "bool",
+        "default": true,
+        "apply": "vm_restart",
+        "description": "Share your Mac's files with the VM, so containers can bind-mount Mac folders"
+      },
+      {
+        "key": "power.pause_in_sleep",
+        "type": "bool",
+        "default": true,
+        "apply": "live",
+        "description": "Pause the VM while your Mac sleeps. Containers and machines carry on where they were when it wakes"
+      },
+      {
+        "key": "start_at_login",
+        "type": "bool",
+        "default": false,
+        "apply": "live",
+        "description": "Start Fevom in the background when you log in. The VM starts only when something needs it"
+      },
+      {
+        "key": "network.host_loopback",
+        "type": "bool",
+        "default": true,
+        "apply": "live",
+        "description": "Let containers reach servers on your Mac's localhost at host.docker.internal"
+      },
+      {
+        "key": "machines.forward_ports",
+        "type": "bool",
+        "default": true,
+        "apply": "live",
+        "description": "Forward the ports machines listen on to localhost on your Mac"
+      },
+      {
+        "key": "machines.expose_ports_to_lan",
+        "type": "bool",
+        "default": true,
+        "apply": "live",
+        "description": "Let other devices on your network reach machines' ports that listen on all addresses (0.0.0.0 or ::)"
+      },
+      {
+        "key": "ssh.port",
+        "type": "int",
+        "default": 32122,
+        "apply": "live",
+        "description": "The port of Fevom's SSH server, used by ssh fev",
+        "min": 1,
+        "max": 65535
+      },
+      {
+        "key": "ssh.expose_port",
+        "type": "bool",
+        "default": false,
+        "apply": "live",
+        "description": "Let other devices on your network reach Fevom's SSH server. When off, only this Mac can connect"
+      },
+      {
+        "key": "network.subnet",
+        "type": "string",
+        "default": "198.19.0.0/16",
+        "apply": "vm_restart",
+        "description": "The IPv4 /16 Fevom takes its addresses from, chosen at the first start away from your Mac's networks. Changing it renumbers every container and machine"
+      },
+      {
+        "key": "network.subnet6",
+        "type": "string",
+        "default": "",
+        "apply": "vm_restart",
+        "description": "The IPv6 /48 (a unique local range) Fevom takes its addresses from, made at the first start"
+      },
+      {
+        "key": "network.direct_access",
+        "type": "bool",
+        "default": true,
+        "apply": "live",
+        "description": "Reach containers and machines at their IP addresses from your Mac. Needs the admin helper (sudo fev setup --admin)"
+      },
+      {
+        "key": "network.https",
+        "type": "bool",
+        "default": true,
+        "apply": "live",
+        "description": "Serve fev.local names over HTTPS, with certificates from Fevom's own root certificate, which your Mac trusts after fev setup --https"
+      },
+      {
+        "key": "network.proxy",
+        "type": "string",
+        "default": "auto",
+        "apply": "live",
+        "description": "The proxy for image pulls and for containers' and machines' connections: auto follows your Mac's settings, none uses no proxy, or enter a proxy URL"
+      },
+      {
+        "key": "network.proxy_exclude",
+        "type": "list",
+        "default": [],
+        "apply": "live",
+        "description": "Hosts, domains and IP ranges (CIDR) reached without the proxy, in addition to your Mac's own exceptions"
+      },
+      {
+        "key": "network.proxy.transparent",
+        "type": "bool",
+        "default": true,
+        "apply": "live",
+        "description": "Send containers' and machines' TCP connections through the proxy, without proxy settings inside them"
+      },
+      {
+        "key": "admin.enabled",
+        "type": "bool",
+        "default": true,
+        "apply": "live",
+        "description": "Use the admin helper for direct IP access, fev.local names on your Mac and ports below 1024. Install it with sudo fev setup --admin"
+      },
+      {
+        "key": "files.view_hidden",
+        "type": "bool",
+        "default": false,
+        "apply": "live",
+        "description": "Hide ~/Fevom from Finder's sidebar and the desktop. The folder stays at ~/Fevom"
+      },
+      {
+        "key": "emulation.x86",
+        "type": "bool",
+        "default": true,
+        "apply": "engine_restart",
+        "description": "Run x86 Linux software (linux/amd64 images, amd64 machines and 32-bit programs) through translation in the VM"
+      },
+      {
+        "key": "emulation.engine",
+        "type": "string",
+        "default": "fex",
+        "apply": "vm_restart",
+        "description": "The x86-64 translator: auto uses Rosetta, and FEX for software known to fail under Rosetta; fex or rosetta forces one. 32-bit programs always use FEX. A machine's emulation setting or a container's dev.fevom.emulation label overrides it"
+      },
+      {
+        "key": "docker.enabled",
+        "type": "bool",
+        "default": true,
+        "apply": "live",
+        "description": "Run the Docker engine. When off, docker commands are refused and Linux machines keep running"
+      },
+      {
+        "key": "docker.node_name",
+        "type": "string",
+        "default": "fev",
+        "apply": "vm_restart",
+        "description": "The Docker engine's host name, shown by docker info and to a swarm's nodes"
+      },
+      {
+        "key": "debug.cache_url",
+        "type": "string",
+        "default": "https://cache.nixos.org",
+        "apply": "live",
+        "description": "The binary cache the Debug Shell's tools are downloaded from. A mirror must serve the cache's own signatures. Applies at the next download"
+      },
+      {
+        "key": "debug.index_url",
+        "type": "string",
+        "default": "",
+        "apply": "live",
+        "description": "Where the Debug Shell's command index is downloaded from. Empty uses the index that ships with Fevom. Applies at the next download"
+      },
+      {
+        "key": "kubernetes.enabled",
+        "type": "bool",
+        "default": false,
+        "apply": "live",
+        "description": "Run a single-node Kubernetes cluster beside Docker that can run your Docker images. The first start downloads about 250 MB. While on, it uses about a tenth of a CPU core and up to 2 GiB of memory"
+      },
+      {
+        "key": "kubernetes.expose_services_to_lan",
+        "type": "bool",
+        "default": false,
+        "apply": "live",
+        "description": "Let other devices on your network reach the cluster's NodePort services. When off, only this Mac can"
+      },
+      {
+        "key": "kubernetes.kubelet",
+        "type": "object",
+        "default": {},
+        "apply": "live",
+        "description": "Fields of the cluster's kubelet configuration (KubeletConfiguration) as a JSON object. Applying it restarts k3s; workloads keep running"
+      },
+      {
+        "key": "kubernetes.metrics_server",
+        "type": "bool",
+        "default": false,
+        "apply": "live",
+        "description": "Run metrics-server in the cluster, for kubectl top"
+      },
+      {
+        "key": "kubernetes.images_url",
+        "type": "string",
+        "default": "",
+        "apply": "live",
+        "description": "Where the cluster's image archive is downloaded from at the first start. Empty uses k3s's release. Its SHA-256 is checked either way"
+      }
+    ]
+  }
+}

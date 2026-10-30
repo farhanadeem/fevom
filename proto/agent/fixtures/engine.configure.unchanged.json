@@ -1,0 +1,9 @@
+{
+  "method": "engine.configure",
+  "params": {
+    "config": {}
+  },
+  "result": {
+    "state": "unchanged"
+  }
+}

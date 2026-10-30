@@ -1,0 +1,1 @@
+network.proxy_exclude: ["registry.local",".corp.example","10.20.0.0/16"]

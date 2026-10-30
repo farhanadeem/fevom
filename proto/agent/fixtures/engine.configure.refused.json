@@ -1,0 +1,12 @@
+{
+  "method": "engine.configure",
+  "params": {
+    "config": {
+      "data-root": "/somewhere/else"
+    }
+  },
+  "result": {
+    "state": "refused",
+    "error": "data-root is set by fev and cannot be changed in docker.json"
+  }
+}

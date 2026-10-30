@@ -1,0 +1,19 @@
+{
+  "method": "machines.create",
+  "params": {
+    "name": "f43",
+    "distro": "fedora",
+    "release": "43",
+    "arch": "arm64",
+    "user": "dev",
+    "password_hash": "$6$Rk3q9bY1$Jd0bS7r0Yw9oXq2mKcUuQ4w9Vb0H3yV7mX1aN2s5tL8eP6gR4kZ0cB9dF7hJ5uM2nQ1wE3rT6yU8iO0pA4sD/"
+  },
+  "result": {
+    "id": "op-20261014T100140-5",
+    "method": "machines.create",
+    "target": "f43",
+    "state": "running",
+    "phase": "verify",
+    "started": "2026-10-14T10:01:40Z"
+  }
+}

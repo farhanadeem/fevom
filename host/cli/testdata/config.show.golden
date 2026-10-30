@@ -1,0 +1,5 @@
+cpu: 10 (default)
+data_allow_backup: false (default)
+docker.set_context: true (default)
+memory_mib: 4096 (waits for a restart)
+network.publish_lan: true (default)

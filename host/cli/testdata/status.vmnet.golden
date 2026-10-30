@@ -1,0 +1,8 @@
+state: running
+engine: ready
+since: 2026-10-17T21:10:00Z
+boot: e81a08
+direct access: on, 198.19.0.0/16 reached through bridge101 with no admin helper
+names: *.fev.local answered on this Mac by mDNS on bridge101, 2 registered
+name shop-custom.local: answered on this Mac by mDNS, for api (a device on the network answering it too may be taken first)
+https: on, no root yet: "fev setup --https"

@@ -1,0 +1,37 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Seccomp/SeccompEmulator.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Seccomp/SeccompEmulator.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Seccomp/SeccompEmulator.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Seccomp/SeccompEmulator.cpp
+@@ -25,6 +25,8 @@
+ #include <linux/filter.h>
+ #include <linux/seccomp.h>
+ #include <sys/prctl.h>
++#include <linux/capability.h>
++#include <sys/syscall.h>
+ 
+ // seccomp
+ //
+@@ -593,6 +595,15 @@
+   }
+ }
+ 
++static bool HasEffectiveSysAdmin() {
++  __user_cap_header_struct Header {.version = _LINUX_CAPABILITY_VERSION_3, .pid = 0};
++  __user_cap_data_struct Data[_LINUX_CAPABILITY_U32S_3] {};
++  if (::syscall(SYS_capget, &Header, Data) != 0) {
++    return false;
++  }
++  return (Data[CAP_TO_INDEX(CAP_SYS_ADMIN)].effective & CAP_TO_MASK(CAP_SYS_ADMIN)) != 0;
++}
++
+ // Equivalent to seccomp(SECCOMP_SET_MODE_FILTER, ...);
+ uint64_t SeccompEmulator::SetModeFilter(FEXCore::Core::CpuStateFrame* Frame, uint32_t flags, const sock_fprog* prog) {
+   auto Thread = FEX::HLE::ThreadManager::GetStateObjectFromCPUState(Frame);
+@@ -624,7 +635,7 @@
+     return -EFAULT;
+   }
+ 
+-  if (::prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) == 0) {
++  if (::prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) == 0 && !HasEffectiveSysAdmin()) {
+     // The caller did not have the CAP_SYS_ADMIN capability in its user namespace, or had not set no_new_privs before using SECCOMP_SET_MODE_FILTER.
+     return -EACCES;
+   }

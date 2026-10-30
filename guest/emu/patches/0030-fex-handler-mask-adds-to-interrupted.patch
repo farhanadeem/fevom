@@ -1,0 +1,146 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+@@ -412,6 +412,12 @@
+     RestoreThreadState(Thread, ucontext,
+                        ArchHelpers::Context::GetPc(ucontext) == Config.SignalHandlerReturnAddressRT ? RestoreType::TYPE_REALTIME :
+                                                                                                       RestoreType::TYPE_NONREALTIME);
++    {
++      uint64_t Mask;
++      memcpy(&Mask, &static_cast<ucontext_t*>(ucontext)->uc_sigmask, sizeof(uint64_t));
++      Mask |= DeferredFrameSignals(ThreadObject) & ~RequiredSignalMask();
++      memcpy(&static_cast<ucontext_t*>(ucontext)->uc_sigmask, &Mask, sizeof(uint64_t));
++    }
+ 
+     // Ref count our faults
+     // We use this to track if it is safe to clear cache
+@@ -507,6 +513,15 @@
+ 
+   if (SignalReason == SignalEvent::Return || SignalReason == SignalEvent::ReturnRT) {
+     RestoreThreadState(Thread, ucontext, SignalReason == SignalEvent::ReturnRT ? RestoreType::TYPE_REALTIME : RestoreType::TYPE_NONREALTIME);
++    {
++      uint64_t Mask;
++      memcpy(&Mask, &static_cast<ucontext_t*>(ucontext)->uc_sigmask, sizeof(uint64_t));
++      Mask |= DeferredFrameSignals(ThreadObject) & ~RequiredSignalMask();
++      memcpy(&static_cast<ucontext_t*>(ucontext)->uc_sigmask, &Mask, sizeof(uint64_t));
++      if (!ThreadObject->SignalInfo.DeferredSignalFrames.empty()) {
++        mprotect(reinterpret_cast<void*>(&Thread->InterruptFaultPage), sizeof(Thread->InterruptFaultPage), PROT_NONE);
++      }
++    }
+ 
+     // Ref count our faults
+     // We use this to track if it is safe to clear cache
+@@ -570,6 +585,24 @@
+   return NewMask;
+ }
+ 
++uint64_t SignalDelegator::RequiredSignalMask() const {
++  uint64_t Mask {};
++  for (size_t i = 0; i < MAX_SIGNALS; ++i) {
++    if (HostHandlers[i + 1].Required.load(std::memory_order_relaxed)) {
++      Mask |= 1ULL << i;
++    }
++  }
++  return Mask;
++}
++
++uint64_t SignalDelegator::DeferredFrameSignals(const FEX::HLE::ThreadStateObject* ThreadObject) {
++  uint64_t Mask {};
++  for (const auto& Frame : ThreadObject->SignalInfo.DeferredSignalFrames) {
++    Mask |= 1ULL << (Frame.Signal - 1);
++  }
++  return Mask;
++}
++
+ bool SignalDelegator::HandleFrontendSIGSEGV(FEXCore::Core::InternalThreadState* Thread, int Signal, void* Info, void* UContext) {
+   auto SigInfo = *static_cast<siginfo_t*>(Info);
+ 
+@@ -623,11 +656,17 @@
+       }
+ 
+       const auto& Top = ThreadObject->SignalInfo.DeferredSignalFrames.back();
++      uint64_t ContextMask;
++      memcpy(&ContextMask, &_context->uc_sigmask, sizeof(uint64_t));
++      ContextMask &= ~(RequiredSignalMask() | DeferredFrameSignals(ThreadObject));
++      if (ContextMask & (1ULL << (Top.Signal - 1))) {
++        return;
++      }
+       Signal = Top.Signal;
+       SigInfo = Top.Info;
+-      // sig mask has been updated at the defer time, recover the original mask
+-      memcpy(&_context->uc_sigmask, &Top.SigMask, sizeof(uint64_t));
+       ThreadObject->SignalInfo.DeferredSignalFrames.pop_back();
++      ContextMask |= DeferredFrameSignals(ThreadObject);
++      memcpy(&_context->uc_sigmask, &ContextMask, sizeof(uint64_t));
+ 
+       // Until we re-protect the page to PROT_NONE, FEX will now *permanently* defer signals and /not/ check them.
+       //
+@@ -662,12 +701,7 @@
+     auto& [sigmask_val] = _context->uc_sigmask;
+     static_assert(sizeof(sigmask_val[0]) == sizeof(uint64_t), "Unknown sigset_t layout");
+ 
+-    uint64_t RequiredSignals {};
+-    for (size_t i = 0; i < MAX_SIGNALS; ++i) {
+-      if (HostHandlers[i + 1].Required.load(std::memory_order_relaxed)) {
+-        RequiredSignals |= 1ULL << i;
+-      }
+-    }
++    const uint64_t RequiredSignals = RequiredSignalMask();
+     ThreadObject->SignalInfo.DeferredSignalFrames.emplace_back(ThreadStateObject::DeferredSignalState {
+       .Info = SigInfo,
+       .Signal = Signal,
+@@ -676,7 +710,7 @@
+ 
+     // Update our host signal mask so we don't hit race conditions with signals
+     // This allows us to maintain the expected signal mask through the guest signal handling and then all the way back again
+-    sigmask_val[0] = GetNewSigMask(Signal);
++    sigmask_val[0] = (sigmask_val[0] & ~RequiredSignals) | (1ULL << (Signal - 1));
+ 
+     // Now update the faulting page permissions so it will fault on write.
+     mprotect(reinterpret_cast<void*>(&Thread->InterruptFaultPage), sizeof(Thread->InterruptFaultPage), PROT_NONE);
+@@ -708,9 +742,14 @@
+   } else if (Handler.GuestAction.sigaction_handler.handler == SIG_IGN) {
+     return;
+   } else {
++    const uint64_t Waiting = DeferredFrameSignals(ThreadObject);
++    uint64_t InterruptedMask;
++    memcpy(&InterruptedMask, &_context->uc_sigmask, sizeof(uint64_t));
++    InterruptedMask &= ~(RequiredSignalMask() | Waiting);
++    memcpy(&_context->uc_sigmask, &InterruptedMask, sizeof(uint64_t));
+     if (Handler.GuestHandler &&
+         Handler.GuestHandler(Thread, Signal, &SigInfo, UContext, &Handler.GuestAction, &ThreadObject->SignalInfo.GuestAltStack)) {
+-      uint64_t NewMask = GetNewSigMask(Signal);
++      uint64_t NewMask = GetNewSigMask(Signal) | InterruptedMask | (Waiting & ~RequiredSignalMask());
+ 
+       // Update our host signal mask so we don't hit race conditions with signals
+       // This allows us to maintain the expected signal mask through the guest signal handling and then all the way back again
+@@ -1248,6 +1287,7 @@
+     }
+ 
+     uint64_t HostMask = Thread->SignalInfo.CurrentSignalMask.Val;
++    HostMask |= DeferredFrameSignals(Thread);
+     // Now actually set the host mask
+     // This will hide from the guest that we are not actually setting all of the masks it wants
+     for (size_t i = 0; i < MAX_SIGNALS; ++i) {
+@@ -1258,6 +1298,9 @@
+     }
+ 
+     ::syscall(SYS_rt_sigprocmask, SIG_SETMASK, &HostMask, nullptr, 8);
++    if (!Thread->SignalInfo.DeferredSignalFrames.empty() && Thread->Thread) {
++      mprotect(reinterpret_cast<void*>(&Thread->Thread->InterruptFaultPage), sizeof(Thread->Thread->InterruptFaultPage), PROT_NONE);
++    }
+   }
+ 
+   if (oldset) {
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.h b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.h
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.h
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.h
+@@ -292,6 +292,8 @@
+   bool HandleSIGILL(FEXCore::Core::InternalThreadState* Thread, int Signal, void* info, void* ucontext);
+ 
+   uint64_t GetNewSigMask(int Signal) const;
++  uint64_t RequiredSignalMask() const;
++  static uint64_t DeferredFrameSignals(const FEX::HLE::ThreadStateObject* ThreadObject);
+ };
+ 
+ fextl::unique_ptr<FEX::HLE::SignalDelegator>

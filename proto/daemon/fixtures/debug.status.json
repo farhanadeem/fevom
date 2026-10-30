@@ -1,0 +1,21 @@
+{
+  "method": "debug.status",
+  "params": {},
+  "result": {
+    "exists": true,
+    "bytes": 320864256,
+    "paths": 104,
+    "packages": [
+      {
+        "name": "vim-9.2",
+        "store_path": "/nix/store/1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p-vim-9.2",
+        "commands": ["vim", "vimdiff"],
+        "default": true
+      }
+    ],
+    "default_set": "defaultset-2026-10-22",
+    "default_whole": true,
+    "index_date": "2026-10-20T09:14:00Z",
+    "sessions": 1
+  }
+}

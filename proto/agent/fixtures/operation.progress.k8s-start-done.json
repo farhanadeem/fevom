@@ -1,0 +1,28 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "id": 312,
+    "method": "k8s.start",
+    "state": "done",
+    "phase": "starting",
+    "result": {
+      "wanted": true,
+      "state": "running",
+      "pid": 2211,
+      "cri": true,
+      "subvolume": true,
+      "bytes": 23789568,
+      "version": "v1.37.1+k3s1",
+      "archive": {
+        "cached": true,
+        "bytes": 440213504,
+        "size": 250217791,
+        "sha256": "b3bd28d3a20144927b25ebb1d255a16ce55bb050b9af5e63abd1bf91c0838fe5",
+        "url": "https://github.com/k3s-io/k3s/releases/download/v1.37.1%2Bk3s1/k3s-airgap-images-arm64.tar.zst"
+      },
+      "kubeconfig": "apiVersion: v1\nclusters:\n- cluster:\n    certificate-authority-data: TFMwdExTMUNSVWRKVGlCRFJWSlVTVVpKUTBGVVJTMHRMUzB0Q2c9PQ==\n    server: https://127.0.0.1:6443\n  name: default\ncontexts:\n- context:\n    cluster: default\n    user: default\n  name: default\ncurrent-context: default\nkind: Config\nusers:\n- name: default\n  user:\n    client-certificate-data: TFMwdExTMUNSVWRKVGlCRFJWSlVTVVpKUTBGVVJTMHRMUzB0Q2c9PQ==\n    client-key-data: TFMwdExTMUNSVWRKVGlCRlF5QlFVa2xXUVZSRklFdEZXUzB0TFMwdENnPT0=\n",
+      "imported_ms": 3100
+    }
+  }
+}

@@ -1,0 +1,12 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp
+@@ -349,7 +349,7 @@
+       }
+     }
+ 
+-    if (!IsBinfmtCompatible || NeedsFDCopy) {
++    if ((IsFDExec || NeedsLoaderFD) && (!IsBinfmtCompatible || NeedsFDCopy)) {
+       if (NeedsFDCopy) {
+         // FEX needs the FD to live past execve when binfmt_misc isn't used,
+         // so duplicate the FD if FD_CLOEXEC is set, which removes the FD_CLOEXEC flag.

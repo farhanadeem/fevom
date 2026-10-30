@@ -1,0 +1,25 @@
+{
+  "method": "k8s.apply",
+  "params": {
+    "documents": [
+      {
+        "source": "pasted",
+        "yaml": "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: shop\n"
+      }
+    ],
+    "dry_run": true
+  },
+  "result": {
+    "objects": [
+      {
+        "source": "pasted",
+        "ref": {
+          "api_version": "v1",
+          "kind": "Namespace",
+          "name": "shop"
+        },
+        "action": "created"
+      }
+    ]
+  }
+}

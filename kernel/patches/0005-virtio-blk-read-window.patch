@@ -1,0 +1,208 @@
+diff --git a/drivers/block/virtio_blk.c b/drivers/block/virtio_blk.c
+--- a/drivers/block/virtio_blk.c
++++ b/drivers/block/virtio_blk.c
+@@ -15,6 +15,8 @@
+ #include <linux/blk-mq.h>
+ #include <linux/numa.h>
+ #include <linux/vmalloc.h>
++#include <linux/io.h>
++#include <linux/percpu.h>
+ #include <uapi/linux/virtio_ring.h>
+ 
+ #define PART_BITS 4
+@@ -40,6 +42,32 @@
+ static unsigned int poll_queues;
+ module_param(poll_queues, uint, 0644);
+ MODULE_PARM_DESC(poll_queues, "The number of dedicated virtqueues for polling I/O");
++
++#define VIRTIO_BLK_F_FEV_WINDOW 23
++
++static unsigned int fev_window_max = 64 << 10;
++module_param(fev_window_max, uint, 0644);
++MODULE_PARM_DESC(fev_window_max, "Largest read in bytes served from the read window; 0 for none");
++
++static unsigned int fev_window_grain = 16 << 10;
++module_param(fev_window_grain, uint, 0644);
++MODULE_PARM_DESC(fev_window_grain, "A read is served from the read window only within one unit of this many bytes; 0 for any");
++
++static DEFINE_PER_CPU(unsigned long, fev_window_reads);
++
++static int fev_window_reads_get(char *buf, const struct kernel_param *kp)
++{
++	unsigned long sum = 0;
++	int cpu;
++
++	for_each_possible_cpu(cpu)
++		sum += per_cpu(fev_window_reads, cpu);
++	return sysfs_emit(buf, "%lu\n", sum);
++}
++static const struct kernel_param_ops fev_window_reads_ops = {
++	.get = fev_window_reads_get,
++};
++module_param_cb(fev_window_reads, &fev_window_reads_ops, NULL, 0444);
+ 
+ static int major;
+ static DEFINE_IDA(vd_index_ida);
+@@ -50,6 +78,8 @@
+ 	struct virtqueue *vq;
+ 	spinlock_t lock;
+ 	char name[VQ_NAME_LEN];
++	sector_t host_end;
++	bool unkicked;
+ } ____cacheline_aligned_in_smp;
+ 
+ struct virtio_blk {
+@@ -83,6 +113,9 @@
+ 
+ 	/* For zoned device */
+ 	unsigned int zone_sectors;
++
++	const void *win;
++	sector_t win_sectors;
+ };
+ 
+ struct virtblk_req {
+@@ -381,6 +414,7 @@
+ 	bool kick;
+ 
+ 	spin_lock_irq(&vq->lock);
++	WRITE_ONCE(vq->unkicked, false);
+ 	kick = virtqueue_kick_prepare(vq->vq);
+ 	spin_unlock_irq(&vq->lock);
+ 
+@@ -421,6 +455,39 @@
+ 	blk_mq_start_request(req);
+ 
+ 	return BLK_STS_OK;
++}
++
++static bool virtblk_window_read(struct virtio_blk *vblk,
++				struct virtio_blk_vq *vq, struct request *req)
++{
++	u64 start = (u64)blk_rq_pos(req) << SECTOR_SHIFT;
++	sector_t end = blk_rq_pos(req) + blk_rq_sectors(req);
++	unsigned int grain = READ_ONCE(fev_window_grain);
++	struct req_iterator iter;
++	struct bio_vec bv;
++	const char *src;
++
++	if (!vblk->win || req_op(req) != REQ_OP_READ)
++		return false;
++	if (blk_rq_bytes(req) > READ_ONCE(fev_window_max) ||
++	    end > vblk->win_sectors ||
++	    (grain && div_u64(start, grain) !=
++		      div_u64(start + blk_rq_bytes(req) - 1, grain))) {
++		WRITE_ONCE(vq->host_end, end);
++		return false;
++	}
++	if (blk_rq_pos(req) == READ_ONCE(vq->host_end))
++		return false;
++
++	blk_mq_start_request(req);
++	src = vblk->win + start;
++	rq_for_each_segment(bv, req, iter) {
++		memcpy_to_bvec(&bv, src);
++		src += bv.bv_len;
++	}
++	this_cpu_inc(fev_window_reads);
++	blk_mq_end_request(req, BLK_STS_OK);
++	return true;
+ }
+ 
+ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
+@@ -435,6 +502,12 @@
+ 	blk_status_t status;
+ 	int err;
+ 
++	if (virtblk_window_read(vblk, &vblk->vqs[qid], req)) {
++		if (bd->last && READ_ONCE(vblk->vqs[qid].unkicked))
++			virtio_commit_rqs(hctx);
++		return BLK_STS_OK;
++	}
++
+ 	status = virtblk_prep_rq(hctx, vblk, req, vbr);
+ 	if (unlikely(status))
+ 		return status;
+@@ -453,6 +526,7 @@
+ 		return virtblk_fail_to_queue(req, err);
+ 	}
+ 
++	WRITE_ONCE(vblk->vqs[qid].unkicked, !bd->last);
+ 	if (bd->last && virtqueue_kick_prepare(vblk->vqs[qid].vq))
+ 		notify = true;
+ 	spin_unlock_irqrestore(&vblk->vqs[qid].lock, flags);
+@@ -491,6 +565,7 @@
+ 		}
+ 	}
+ 
++	WRITE_ONCE(vq->unkicked, false);
+ 	kick = virtqueue_kick_prepare(vq->vq);
+ 	spin_unlock_irqrestore(&vq->lock, flags);
+ 
+@@ -508,6 +583,9 @@
+ 	while ((req = rq_list_pop(rqlist))) {
+ 		struct virtio_blk_vq *this_vq = get_virtio_blk_vq(req->mq_hctx);
+ 
++		if (virtblk_window_read(req->mq_hctx->queue->queuedata, this_vq, req))
++			continue;
++
+ 		if (vq && vq != this_vq)
+ 			virtblk_add_req_batch(vq, &submit_list);
+ 		vq = this_vq;
+@@ -1022,6 +1100,8 @@
+ 
+ 	for (i = 0; i < num_vqs; i++) {
+ 		spin_lock_init(&vblk->vqs[i].lock);
++		vblk->vqs[i].host_end = ~(sector_t)0;
++		vblk->vqs[i].unkicked = false;
+ 		vblk->vqs[i].vq = vqs[i];
+ 	}
+ 	vblk->num_vqs = num_vqs;
+@@ -1468,6 +1548,20 @@
+ 	vblk->vdev = vdev;
+ 
+ 	INIT_WORK(&vblk->config_work, virtblk_config_changed_work);
++
++	vblk->win = NULL;
++	vblk->win_sectors = 0;
++	if (virtio_has_feature(vdev, VIRTIO_BLK_F_FEV_WINDOW)) {
++		struct virtio_shm_region win;
++
++		if (virtio_get_shm_region(vdev, &win, 0) && win.len)
++			vblk->win = (__force const void *)
++				__ioremap_prot(win.addr, win.len, PAGE_KERNEL_RO);
++		if (vblk->win)
++			vblk->win_sectors = win.len >> SECTOR_SHIFT;
++		dev_info(&vdev->dev, "fev read window: %s\n",
++			 vblk->win ? "mapped" : "offered, not usable");
++	}
+ 
+ 	err = init_vq(vblk);
+ 	if (err)
+@@ -1554,6 +1648,8 @@
+ 	vdev->config->del_vqs(vdev);
+ 	kfree(vblk->vqs);
+ out_free_vblk:
++	if (vblk->win)
++		iounmap((__force void __iomem *)vblk->win);
+ 	kfree(vblk);
+ out_free_index:
+ 	ida_free(&vd_index_ida, index);
+@@ -1584,6 +1680,9 @@
+ 
+ 	mutex_unlock(&vblk->vdev_mutex);
+ 
++	if (vblk->win)
++		iounmap((__force void __iomem *)vblk->win);
++
+ 	put_disk(vblk->disk);
+ }
+ 
+@@ -1672,6 +1771,7 @@
+ 	VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_TOPOLOGY, VIRTIO_BLK_F_CONFIG_WCE,
+ 	VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_DISCARD, VIRTIO_BLK_F_WRITE_ZEROES,
+ 	VIRTIO_BLK_F_SECURE_ERASE, VIRTIO_BLK_F_ZONED,
++	VIRTIO_BLK_F_FEV_WINDOW,
+ };
+ 
+ static struct virtio_driver virtio_blk = {

@@ -1,0 +1,375 @@
+diff --git a/fs/fuse/Kconfig b/fs/fuse/Kconfig
+--- a/fs/fuse/Kconfig
++++ b/fs/fuse/Kconfig
+@@ -87,6 +87,18 @@
+ 	  corrected and the fsnotify events a local change would raise are
+ 	  raised. See include/uapi/linux/fev_fsnotify.h.
+ 
++config FUSE_FEV_CACHE
++	bool "fev: cache what the file server's change events keep true"
++	depends on FUSE_FEV_NOTIFY
++	help
++	  What a client must do differently to cache for long what a server
++	  announces every change to through /dev/fev-fsnotify: an
++	  "invalidate everything" that expires entries and does not fail them,
++	  replies that were on their way while an entry was invalidated, and
++	  the requests such caching leaves over (FUSE_FEV_CACHE,
++	  FUSE_ATTR_NO_KEEP_CACHE and FUSE_ATTR_NO_SEC in
++	  include/uapi/linux/fuse.h).
++
+ config FUSE_CALLER_OWNER
+ 	bool "fev: files a FUSE server marks belong to whoever asks"
+ 	depends on FUSE_FS
+diff --git a/fs/fuse/dir.c b/fs/fuse/dir.c
+--- a/fs/fuse/dir.c
++++ b/fs/fuse/dir.c
+@@ -334,8 +334,20 @@
+  */
+ void fuse_invalidate_atime(struct inode *inode)
+ {
+-	if (!IS_RDONLY(inode))
+-		fuse_invalidate_attr_mask(inode, STATX_ATIME);
++	if (IS_RDONLY(inode))
++		return;
++	if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) &&
++	    get_fuse_conn(inode)->fev_cache) {
++		struct timespec64 atime = inode_get_atime(inode);
++		struct timespec64 mtime = inode_get_mtime(inode);
++		struct timespec64 ctime = inode_get_ctime(inode);
++
++		if (timespec64_compare(&mtime, &atime) < 0 &&
++		    timespec64_compare(&ctime, &atime) < 0 &&
++		    ktime_get_real_seconds() - atime.tv_sec < 24 * 60 * 60)
++			return;
++	}
++	fuse_invalidate_attr_mask(inode, STATX_ATIME);
+ }
+ 
+ /*
+@@ -396,21 +408,26 @@
+ 	struct fuse_conn *fc;
+ 	struct fuse_inode *fi;
+ 	struct fuse_dentry *fd = entry->d_fsdata;
++	bool old_epoch;
+ 	int ret;
+ 
+ 	fc = get_fuse_conn_super(dir->i_sb);
+-	if (fd->epoch < atomic_read(&fc->epoch))
++	old_epoch = fd->epoch < atomic_read(&fc->epoch);
++	if (old_epoch && !(IS_ENABLED(CONFIG_FUSE_FEV_CACHE) &&
++			   fc->fev_cache))
+ 		goto invalid;
+ 
+ 	inode = d_inode_rcu(entry);
+ 	if (inode && fuse_is_bad(inode))
+ 		goto invalid;
+-	else if (time_before64(fuse_dentry_time(entry), get_jiffies_64()) ||
++	else if (old_epoch ||
++		 time_before64(fuse_dentry_time(entry), get_jiffies_64()) ||
+ 		 (flags & (LOOKUP_EXCL | LOOKUP_REVAL | LOOKUP_RENAME_TARGET))) {
+ 		struct fuse_entry_out outarg;
+ 		FUSE_ARGS(args);
+ 		struct fuse_forget_link *forget;
+ 		u64 attr_version;
++		int epoch, events;
+ 
+ 		/* For negative dentries, always do a fresh lookup */
+ 		if (!inode)
+@@ -428,6 +445,8 @@
+ 			goto out;
+ 
+ 		attr_version = fuse_get_attr_version(fm->fc);
++		epoch = atomic_read(&fc->epoch);
++		events = atomic_read(&fc->fev_events);
+ 
+ 		fuse_lookup_init(&args, get_node_id(dir), name, &outarg);
+ 		ret = fuse_simple_request(fm, &args);
+@@ -458,6 +477,12 @@
+ 				       ATTR_TIMEOUT(&outarg),
+ 				       attr_version);
+ 		fuse_change_entry_timeout(entry, &outarg);
++		if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE)) {
++			if (old_epoch)
++				fuse_dentry_set_epoch(entry, epoch);
++			if (events != atomic_read(&fc->fev_events))
++				fuse_invalidate_entry_cache(entry);
++		}
+ 	} else if (inode) {
+ 		fi = get_fuse_inode(inode);
+ 		if (flags & LOOKUP_RCU) {
+diff --git a/fs/fuse/file.c b/fs/fuse/file.c
+--- a/fs/fuse/file.c
++++ b/fs/fuse/file.c
+@@ -130,15 +130,23 @@
+ 	}
+ }
+ 
+-struct fuse_file *fuse_file_open(struct fuse_mount *fm, u64 nodeid,
+-				 unsigned int open_flags, bool isdir)
++static struct fuse_file *fuse_file_open_inode(struct fuse_mount *fm, u64 nodeid,
++					      unsigned int open_flags,
++					      bool isdir, struct inode *binode)
+ {
+ 	struct fuse_conn *fc = fm->fc;
+ 	struct fuse_file *ff;
+ 	int opcode = isdir ? FUSE_OPENDIR : FUSE_OPEN;
+ 	bool open = isdir ? !fc->no_opendir : !fc->no_open;
+ 	bool release = !isdir || open;
++	struct fuse_inode *bfi = NULL;
+ 
++	if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) && binode) {
++		bfi = get_fuse_inode(binode);
++		if (isdir && test_bit(FUSE_I_OPEN_FREE, &bfi->state))
++			open = release = false;
++	}
++
+ 	/*
+ 	 * ff->args->release_args still needs to be allocated (so we can hold an
+ 	 * inode reference while there are pending inflight file operations when
+@@ -154,6 +162,8 @@
+ 	ff->fh = 0;
+ 	/* Default for no-open */
+ 	ff->open_flags = FOPEN_KEEP_CACHE | (isdir ? FOPEN_CACHE_DIR : 0);
++	if (bfi && !open && test_bit(FUSE_I_NO_KEEP_CACHE, &bfi->state))
++		ff->open_flags = 0;
+ 	if (open) {
+ 		/* Store outarg for fuse_finish_open() */
+ 		struct fuse_open_out *outargp = &ff->args->open_outarg;
+@@ -163,6 +173,14 @@
+ 		if (!err) {
+ 			ff->fh = outargp->fh;
+ 			ff->open_flags = outargp->open_flags;
++			if (bfi && isdir &&
++			    (ff->open_flags & FOPEN_FEV_FREE)) {
++				ff->fh = 0;
++				ff->open_flags &= ~FOPEN_FEV_FREE;
++				kfree(ff->args);
++				ff->args = NULL;
++				set_bit(FUSE_I_OPEN_FREE, &bfi->state);
++			}
+ 		} else if (err != -ENOSYS) {
+ 			fuse_file_free(ff);
+ 			return ERR_PTR(err);
+@@ -186,10 +204,18 @@
+ 	return ff;
+ }
+ 
++struct fuse_file *fuse_file_open(struct fuse_mount *fm, u64 nodeid,
++				 unsigned int open_flags, bool isdir)
++{
++	return fuse_file_open_inode(fm, nodeid, open_flags, isdir, NULL);
++}
++
+ int fuse_do_open(struct fuse_mount *fm, u64 nodeid, struct file *file,
+ 		 bool isdir)
+ {
+-	struct fuse_file *ff = fuse_file_open(fm, nodeid, file->f_flags, isdir);
++	struct inode *binode = fm->fc->fev_cache ? file_inode(file) : NULL;
++	struct fuse_file *ff = fuse_file_open_inode(fm, nodeid, file->f_flags,
++						    isdir, binode);
+ 
+ 	if (!IS_ERR(ff))
+ 		file->private_data = ff;
+diff --git a/fs/fuse/fuse_i.h b/fs/fuse/fuse_i.h
+--- a/fs/fuse/fuse_i.h
++++ b/fs/fuse/fuse_i.h
+@@ -257,6 +257,8 @@
+ 	 * or the fuse server has an exclusive "lease" on distributed fs
+ 	 */
+ 	FUSE_I_EXCLUSIVE,
++	FUSE_I_NO_KEEP_CACHE,
++	FUSE_I_OPEN_FREE,
+ };
+ 
+ struct fuse_conn;
+@@ -710,7 +712,13 @@
+ 
+ 	/** @sync_init: Is synchronous FUSE_INIT allowed? */
+ 	unsigned int sync_init:1;
++
++	unsigned int fev_cache:1;
++
++	unsigned int no_ioctl:1;
+ 
++	atomic_t fev_events;
++
+ 	/** @max_stack_depth: Maximum stack depth for passthrough backing files */
+ 	int max_stack_depth;
+ 
+diff --git a/fs/fuse/inode.c b/fs/fuse/inode.c
+--- a/fs/fuse/inode.c
++++ b/fs/fuse/inode.c
+@@ -254,6 +254,13 @@
+ 				inode_set_flags(inode, 0, S_CALLER_OWNER);
+ 			break;
+ 		}
++	}
++	if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) && !sx &&
++	    fc->user_ns == &init_user_ns) {
++		if (attr->flags & FUSE_ATTR_NO_KEEP_CACHE)
++			set_bit(FUSE_I_NO_KEEP_CACHE, &fi->state);
++		else
++			clear_bit(FUSE_I_NO_KEEP_CACHE, &fi->state);
+ 	}
+ 
+ 	/* Sanitize nsecs */
+@@ -314,6 +321,9 @@
+ 	 * anyway. Its less efficient but should be safe.
+ 	 */
+ 	inode->i_flags &= ~S_NOSEC;
++	if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) && !sx &&
++	    fc->user_ns == &init_user_ns && (attr->flags & FUSE_ATTR_NO_SEC))
++		inode_has_no_xattr(inode);
+ }
+ 
+ u32 fuse_get_cache_mask(struct inode *inode)
+@@ -1425,6 +1435,10 @@
+ 
+ 			if (flags & FUSE_REQUEST_TIMEOUT)
+ 				timeout = arg->request_timeout;
++			if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) &&
++			    (flags & FUSE_FEV_CACHE) &&
++			    fc->user_ns == &init_user_ns)
++				fc->fev_cache = 1;
+ 		} else {
+ 			ra_pages = fc->max_read / PAGE_SIZE;
+ 			fc->no_lock = 1;
+@@ -1496,6 +1510,9 @@
+ 
+ 	if (fuse_uring_enabled())
+ 		flags |= FUSE_OVER_IO_URING;
++	if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) &&
++	    fm->fc->user_ns == &init_user_ns)
++		flags |= FUSE_FEV_CACHE;
+ 
+ 	ia->in.flags = flags;
+ 	ia->in.flags2 = flags >> 32;
+diff --git a/fs/fuse/ioctl.c b/fs/fuse/ioctl.c
+--- a/fs/fuse/ioctl.c
++++ b/fs/fuse/ioctl.c
+@@ -21,11 +21,17 @@
+ 	args->out_args[0].size = sizeof(*outarg);
+ 	args->out_args[0].value = outarg;
+ 
++	if (fm->fc->no_ioctl)
++		return -ENOTTY;
++
+ 	ret = fuse_simple_request(fm, args);
+ 
+ 	/* Translate ENOSYS, which shouldn't be returned from fs */
+-	if (ret == -ENOSYS)
++	if (ret == -ENOSYS) {
++		if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) && fm->fc->fev_cache)
++			fm->fc->no_ioctl = 1;
+ 		ret = -ENOTTY;
++	}
+ 
+ 	if (ret >= 0 && outarg->result == -ENOSYS)
+ 		outarg->result = -ENOTTY;
+diff --git a/fs/fuse/readdir.c b/fs/fuse/readdir.c
+--- a/fs/fuse/readdir.c
++++ b/fs/fuse/readdir.c
+@@ -152,7 +152,7 @@
+ 
+ static int fuse_direntplus_link(struct file *file,
+ 				struct fuse_direntplus *direntplus,
+-				u64 attr_version, u64 evict_ctr)
++				u64 attr_version, u64 evict_ctr, int epoch)
+ {
+ 	struct fuse_entry_out *o = &direntplus->entry_out;
+ 	struct fuse_dirent *dirent = &direntplus->dirent;
+@@ -163,7 +163,6 @@
+ 	struct inode *dir = d_inode(parent);
+ 	struct fuse_conn *fc;
+ 	struct inode *inode;
+-	int epoch;
+ 
+ 	if (!o->nodeid) {
+ 		/*
+@@ -193,7 +192,6 @@
+ 		return -EIO;
+ 
+ 	fc = get_fuse_conn(dir);
+-	epoch = atomic_read(&fc->epoch);
+ 
+ 	name.hash = full_name_hash(parent, name.name, name.len);
+ 	dentry = d_lookup(parent, &name);
+@@ -290,7 +288,7 @@
+ 
+ static int parse_dirplusfile(char *buf, size_t nbytes, struct file *file,
+ 			     struct dir_context *ctx, u64 attr_version,
+-			     u64 evict_ctr)
++			     u64 evict_ctr, int epoch)
+ {
+ 	struct fuse_direntplus *direntplus;
+ 	struct fuse_dirent *dirent;
+@@ -325,7 +323,8 @@
+ 		buf += reclen;
+ 		nbytes -= reclen;
+ 
+-		ret = fuse_direntplus_link(file, direntplus, attr_version, evict_ctr);
++		ret = fuse_direntplus_link(file, direntplus, attr_version,
++					   evict_ctr, epoch);
+ 		if (ret)
+ 			fuse_force_forget(file, direntplus->entry_out.nodeid);
+ 	}
+@@ -382,6 +381,7 @@
+ 	void *buf;
+ 	size_t bufsize = clamp((unsigned int) ctx->count, PAGE_SIZE, fc->max_pages << PAGE_SHIFT);
+ 	u64 attr_version = 0, evict_ctr = 0;
++	int epoch = atomic_read(&fm->fc->epoch);
+ 	bool locked;
+ 	struct page **pages = fuse_readdir_alloc_buf(ap, &bufsize);
+ 
+@@ -399,8 +399,12 @@
+ 	locked = fuse_lock_inode(inode);
+ 	res = fuse_simple_request(fm, &ap->args);
+ 	fuse_unlock_inode(inode, locked);
+-	if (res < 0)
++	if (res < 0) {
++		if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE))
++			clear_bit(FUSE_I_OPEN_FREE,
++				  &get_fuse_inode(inode)->state);
+ 		goto out;
++	}
+ 
+ 	if (!res) {
+ 		struct fuse_file *ff = file->private_data;
+@@ -415,7 +419,8 @@
+ 		res = -ENOMEM;
+ 	} else {
+ 		if (plus)
+-			res = parse_dirplusfile(buf, res, file, ctx, attr_version, evict_ctr);
++			res = parse_dirplusfile(buf, res, file, ctx,
++						attr_version, evict_ctr, epoch);
+ 		else
+ 			res = parse_dirfile(buf, res, file, ctx);
+ 
+diff --git a/include/uapi/linux/fuse.h b/include/uapi/linux/fuse.h
+--- a/include/uapi/linux/fuse.h
++++ b/include/uapi/linux/fuse.h
+@@ -392,6 +392,7 @@
+ #define FOPEN_NOFLUSH		(1 << 5)
+ #define FOPEN_PARALLEL_DIRECT_WRITES	(1 << 6)
+ #define FOPEN_PASSTHROUGH	(1 << 7)
++#define FOPEN_FEV_FREE	(1U << 31)
+ 
+ /**
+  * INIT request/reply flags
+@@ -495,6 +496,7 @@
+ #define FUSE_ALLOW_IDMAP	(1ULL << 40)
+ #define FUSE_OVER_IO_URING	(1ULL << 41)
+ #define FUSE_REQUEST_TIMEOUT	(1ULL << 42)
++#define FUSE_FEV_CACHE	(1ULL << 63)
+ 
+ /**
+  * CUSE INIT request/reply flags
+@@ -583,6 +585,8 @@
+ #define FUSE_ATTR_DAX		(1 << 1)
+ #define FUSE_ATTR_REAL_OWNER	(1U << 30)
+ #define FUSE_ATTR_CALLER_OWNER	(1U << 31)
++#define FUSE_ATTR_NO_KEEP_CACHE	(1U << 29)
++#define FUSE_ATTR_NO_SEC	(1U << 28)
+ 
+ /**
+  * Open flags

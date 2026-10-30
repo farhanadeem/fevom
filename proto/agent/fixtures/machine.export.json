@@ -1,0 +1,10 @@
+{
+  "method": "machine.export",
+  "params": {
+    "name": "dev"
+  },
+  "result": {
+    "id": 5,
+    "token": "9e8d7c6b5a4f43e2a1b0c9d8e7f6a5b4"
+  }
+}

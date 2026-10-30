@@ -1,0 +1,15 @@
+{
+  "method": "machines.export",
+  "params": {
+    "name": "dev",
+    "path": "/Users/ada/Backups/dev.tar.zst"
+  },
+  "result": {
+    "id": "op-20261014T103000-2",
+    "method": "machines.export",
+    "target": "dev",
+    "state": "running",
+    "phase": "archive",
+    "started": "2026-10-14T10:30:00Z"
+  }
+}

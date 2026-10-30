@@ -1,0 +1,18 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 21,
+    "state": "running",
+    "engine": "ready",
+    "boot_id": "b7e1d4",
+    "since": "2026-10-23T21:00:00.5Z",
+    "pending_restart": [],
+    "k8s": {
+      "enabled": true,
+      "state": "running",
+      "ready": true,
+      "version": "v1.37.1+k3s1"
+    }
+  }
+}

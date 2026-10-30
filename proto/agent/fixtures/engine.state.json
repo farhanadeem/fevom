@@ -1,0 +1,11 @@
+{
+  "method": "engine.state",
+  "notification": true,
+  "params": {
+    "subscription": 4,
+    "state": "failed",
+    "starts": 5,
+    "last_exit": "exit 1",
+    "error": "exited 5 times in a row; not restarting"
+  }
+}

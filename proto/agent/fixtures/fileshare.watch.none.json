@@ -1,0 +1,9 @@
+{
+  "method": "fileshare.watch",
+  "params": {
+    "paths": []
+  },
+  "result": {
+    "watching": 0
+  }
+}

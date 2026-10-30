@@ -1,0 +1,16 @@
+diff --git a/FEXCore/Source/Interface/Config/Config.json.in b/FEXCore/Source/Interface/Config/Config.json.in
+--- a/FEXCore/Source/Interface/Config/Config.json.in
++++ b/FEXCore/Source/Interface/Config/Config.json.in
+@@ -699,10 +699,10 @@
+       },
+       "NeedsSeccomp": {
+         "Type": "bool",
+-        "Default": "false",
++        "Default": "true",
+         "AffectsCodeGen": "false",
+         "Desc": [
+-          "Disables inline syscalls in order to support seccomp handling"
++          "Emulates seccomp for the guest (fev: on by default; off, seccomp() and PR_SET_SECCOMP answer EINVAL)"
+         ]
+       },
+       "ExtendedVolatileMetadata": {

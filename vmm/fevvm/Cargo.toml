@@ -1,0 +1,19 @@
+[package]
+name = "fevvm"
+version = "0.0.0"
+edition.workspace = true
+license-file.workspace = true
+publish.workspace = true
+description = "The fev virtual machine monitor: boots a Linux guest on Hypervisor.framework."
+
+[features]
+fuzzing = ["fileshare/testing"]
+
+[dependencies]
+fileshare = { path = "../fileshare" }
+hvf-sys = { path = "../hvf-sys" }
+libc = "0.2"
+vm-fdt = "0.3"
+
+[dev-dependencies]
+fileshare = { path = "../fileshare", features = ["testing"] }

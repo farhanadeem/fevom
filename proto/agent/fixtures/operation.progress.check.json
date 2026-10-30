@@ -1,0 +1,20 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "id": 7,
+    "method": "storage.check",
+    "state": "done",
+    "phase": "scrub",
+    "done_bytes": 3305111552,
+    "total_bytes": 3305111552,
+    "result": {
+      "state": "done",
+      "started_ms": 120400.0,
+      "ended_ms": 131850.5,
+      "scrubbed_bytes": 3305111552,
+      "corrected": 1,
+      "uncorrectable": 0
+    }
+  }
+}

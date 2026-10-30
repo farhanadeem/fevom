@@ -1,0 +1,167 @@
+diff --git a/FEXCore/Source/Interface/Core/DiskCache.cpp b/FEXCore/Source/Interface/Core/DiskCache.cpp
+--- a/FEXCore/Source/Interface/Core/DiskCache.cpp
++++ b/FEXCore/Source/Interface/Core/DiskCache.cpp
+@@ -176,6 +176,18 @@
+     return true;
+   }
+ 
++  bool FOZFile::PWriteAll(std::span<const uint8_t> Data, uint64_t Offset) {
++    while (!Data.empty()) {
++      const ssize_t W = FD->PWrite(Data.data(), Data.size(), Offset);
++      if (W <= 0) {
++        return false;
++      }
++      Data = Data.subspan(W);
++      Offset += W;
++    }
++    return true;
++  }
++
+   bool IndexedDB::Open(const fextl::string& CacheDBName, bool ReadOnly) {
+     if (!CacheFOZ.Open(CacheDBName + ".foz", ReadOnly)) {
+       return false;
+@@ -342,6 +354,82 @@
+     return true;
+   }
+ 
++  void IndexedDB::StoreCacheBlobs(std::span<StoreRequest> Requests) {
++    for (auto& R : Requests) {
++      R.Stored = false;
++    }
++    if (ReadOnly || Requests.empty()) {
++      return;
++    }
++    auto& CacheFOZ = WriteCacheFOZ;
++    auto& IndexFOZ = WriteIndexFOZ;
++    if (!CacheFOZ.Lock(STORE_LOCK_TIMEOUT_MS) || !IndexFOZ.Lock(STORE_LOCK_TIMEOUT_MS)) {
++      CacheFOZ.Unlock();
++      IndexFOZ.Unlock();
++      return;
++    }
++    const ssize_t CacheEnd = CacheFOZ.Size();
++    const ssize_t IndexEnd = IndexFOZ.Size();
++    if (CacheEnd < 0 || IndexEnd < 0) {
++      CacheFOZ.Unlock();
++      IndexFOZ.Unlock();
++      return;
++    }
++
++    const auto Append = [](fextl::vector<uint8_t>& Out, const void* Data, size_t Size) {
++      const auto* P = static_cast<const uint8_t*>(Data);
++      Out.insert(Out.end(), P, P + Size);
++    };
++    size_t CacheBytes = 0, IndexBytes = 0;
++    for (const auto& R : Requests) {
++      CacheBytes += sizeof(MesaFOZ::foz_payload_key) + sizeof(MesaFOZ::foz_payload_header) + R.Blob.size();
++      IndexBytes += sizeof(MesaFOZ::foz_payload_key) + sizeof(MesaFOZ::foz_payload_header) + sizeof(MesaFOZ::mesa_index_db_file_entry) +
++                    R.IndexBlob.size();
++    }
++    fextl::vector<uint8_t> CacheBuf, IndexBuf;
++    CacheBuf.reserve(CacheBytes);
++    IndexBuf.reserve(IndexBytes);
++
++    for (auto& R : Requests) {
++      if (MaxSizeReached || (uint64_t)CacheEnd + CacheBuf.size() + R.Blob.size() >= MaxFileSize) {
++        MaxSizeReached = true;
++        break;
++      }
++      Append(CacheBuf, R.UniqueKey->bytes, sizeof(R.UniqueKey->bytes));
++      const MesaFOZ::foz_payload_header BlobHeader {.payload_size = (uint32_t)R.Blob.size(),
++                                                    .format = MesaFOZ::FOSSILIZE_COMPRESSION_NONE,
++                                                    .crc = 0,
++                                                    .uncompressed_size = (uint32_t)R.Blob.size()};
++      Append(CacheBuf, &BlobHeader, sizeof(BlobHeader));
++      const uint64_t BlobOffset = (uint64_t)CacheEnd + CacheBuf.size();
++      Append(CacheBuf, R.Blob.data(), R.Blob.size());
++
++      *R.IndexEntry = {.hash = R.LookupKey, .size = (uint32_t)R.Blob.size(), .last_access_time = 0, .cache_db_file_offset = BlobOffset};
++      const uint32_t IndexPayload = sizeof(MesaFOZ::mesa_index_db_file_entry) + R.IndexBlob.size();
++      Append(IndexBuf, R.UniqueKey->bytes, sizeof(R.UniqueKey->bytes));
++      const MesaFOZ::foz_payload_header IndexHeader {
++        .payload_size = IndexPayload, .format = MesaFOZ::FOSSILIZE_COMPRESSION_NONE, .crc = 0, .uncompressed_size = IndexPayload};
++      Append(IndexBuf, &IndexHeader, sizeof(IndexHeader));
++      Append(IndexBuf, R.IndexEntry, sizeof(*R.IndexEntry));
++      Append(IndexBuf, R.IndexBlob.data(), R.IndexBlob.size());
++      R.Stored = true;
++    }
++
++    bool Written = CacheBuf.empty() || CacheFOZ.PWriteAll(CacheBuf, CacheEnd);
++    Written = Written && (IndexBuf.empty() || IndexFOZ.PWriteAll(IndexBuf, IndexEnd));
++    CacheFOZ.Unlock();
++    IndexFOZ.Unlock();
++    if (!Written) {
++      for (auto& R : Requests) {
++        R.Stored = false;
++      }
++      return;
++    }
++    if (CacheFileMapping) {
++      CacheFileSize = (uint64_t)CacheEnd + CacheBuf.size();
++    }
++  }
++
+   bool IndexedDB::BeginWrite() {
+     if (ReadOnly) {
+       return false;
+@@ -1051,9 +1139,10 @@
+       , Blob(Blob)
+       , IndexBlob(std::move(IndexBlob))
+       , StoreDisk(StoreDisk) {}
++    struct MesaFOZ::mesa_index_db_file_entry IndexHeader {};
++    bool Stored = false;
+     void Run() {
+-      struct MesaFOZ::mesa_index_db_file_entry IndexHeader;
+-      bool DiskSuccess = !StoreDisk || DB->StoreCacheBlob(UniqueKey, LookupKey, Blob, IndexHeader, IndexBlob);
++      bool DiskSuccess = !StoreDisk || Stored;
+ 
+       bool KeepEntryInMemory = true;
+       // todo possible other lru condition here like entry size?
+@@ -1404,7 +1493,21 @@
+ #endif
+     if (!RWCacheDB->BeginWrite()) {
+       return;
++    }
++    fextl::vector<IndexedDB::StoreRequest> Requests;
++    fextl::vector<CacheStoreWorkItem*> Stored;
++    Requests.reserve(Items.size());
++    Stored.reserve(Items.size());
++    for (auto& Item : Items) {
++      if (Item->StoreDisk && Item->DB == RWCacheDB.get()) {
++        Requests.push_back({&Item->UniqueKey, Item->LookupKey, Item->Blob, Item->IndexBlob, &Item->IndexHeader, false});
++        Stored.push_back(Item.get());
++      }
+     }
++    RWCacheDB->StoreCacheBlobs(Requests);
++    for (size_t i = 0; i < Requests.size(); ++i) {
++      Stored[i]->Stored = Requests[i].Stored;
++    }
+     for (auto& Item : Items) {
+       Item->Run();
+     }
+diff --git a/FEXCore/Source/Interface/Core/DiskCache.h b/FEXCore/Source/Interface/Core/DiskCache.h
+--- a/FEXCore/Source/Interface/Core/DiskCache.h
++++ b/FEXCore/Source/Interface/Core/DiskCache.h
+@@ -151,6 +151,7 @@
+     bool ReadAll(fextl::vector<uint8_t>& Out); // from first blob
+     bool ReadBlob(uint64_t Offset, std::span<uint8_t> OutBlob);
+     bool WriteBlob(const MesaFOZ::foz_payload_key& Key, std::span<const std::span<const uint8_t>> BlobChunks, uint64_t& OutBlobOffset);
++    bool PWriteAll(std::span<const uint8_t> Data, uint64_t Offset);
+     void Close() {
+       FD.reset();
+     }
+@@ -170,6 +171,15 @@
+     bool ReadCacheBlob(uint64_t Offset, std::span<uint8_t> OutBlob);
+     bool StoreCacheBlob(const MesaFOZ::foz_payload_key& UniqueKey, uint64_t LookupKey, std::span<const uint8_t> Blob,
+                         MesaFOZ::mesa_index_db_file_entry& IndexEntry, std::span<const uint8_t> IndexBlob);
++    struct StoreRequest {
++      const MesaFOZ::foz_payload_key* UniqueKey;
++      uint64_t LookupKey;
++      std::span<const uint8_t> Blob;
++      std::span<const uint8_t> IndexBlob;
++      MesaFOZ::mesa_index_db_file_entry* IndexEntry;
++      bool Stored;
++    };
++    void StoreCacheBlobs(std::span<StoreRequest> Requests);
+     bool BeginWrite();
+     void EndWrite();
+     bool Full() const {

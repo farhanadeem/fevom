@@ -1,0 +1,9 @@
+{
+  "method": "localnames.set",
+  "params": {"names": []},
+  "result": {
+    "names": [
+      {"name": "app-custom.local", "state": "removed"}
+    ]
+  }
+}

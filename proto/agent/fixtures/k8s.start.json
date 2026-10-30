@@ -1,0 +1,13 @@
+{
+  "method": "k8s.start",
+  "params": {
+    "config": {
+      "kubelet": {
+        "maxPods": 50
+      }
+    }
+  },
+  "result": {
+    "id": 312
+  }
+}

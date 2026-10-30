@@ -1,0 +1,21 @@
+diff --git a/fs/nfsd/nfs4state.c b/fs/nfsd/nfs4state.c
+--- a/fs/nfsd/nfs4state.c
++++ b/fs/nfsd/nfs4state.c
+@@ -7098,6 +7098,8 @@
+ 	struct nfs4_file *nf;
+ 
+ 	list_for_each_entry(stp, &lo->lo_owner.so_stateids, st_perstateowner) {
++		if (stp->st_stid.sc_status)
++			continue;
+ 		nf = stp->st_stid.sc_file;
+ 		ctx = locks_inode_context(nf->fi_inode);
+ 		if (!ctx)
+@@ -9179,6 +9181,8 @@
+ 	}
+ 
+ 	list_for_each_entry(stp, &lo->lo_owner.so_stateids, st_perstateowner) {
++		if (stp->st_stid.sc_status)
++			continue;
+ 		if (check_for_locks(stp->st_stid.sc_file, lo)) {
+ 			spin_unlock(&clp->cl_lock);
+ 			nfs4_put_stateowner(&lo->lo_owner);

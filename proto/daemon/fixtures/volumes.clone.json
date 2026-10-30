@@ -1,0 +1,14 @@
+{
+  "method": "volumes.clone",
+  "params": {
+    "name": "pgdata",
+    "new_name": "pgdata-copy"
+  },
+  "result": {
+    "name": "pgdata-copy",
+    "labels": {
+      "com.docker.compose.project": "shop"
+    },
+    "files": 1288
+  }
+}

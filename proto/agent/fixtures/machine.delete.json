@@ -1,0 +1,7 @@
+{
+  "method": "machine.delete",
+  "params": {
+    "name": "scratch"
+  },
+  "result": {}
+}

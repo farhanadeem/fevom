@@ -1,0 +1,39 @@
+diff --git a/fs/fuse/Makefile b/fs/fuse/Makefile
+--- a/fs/fuse/Makefile
++++ b/fs/fuse/Makefile
+@@ -14,6 +14,7 @@
+ fuse-y += dev.o dir.o file.o inode.o control.o xattr.o acl.o readdir.o ioctl.o req_timeout.o req.o
+ fuse-y += poll.o notify.o
+ fuse-y += iomode.o
++fuse-$(CONFIG_FUSE_FEV_NOTIFY) += fev_notify.o
+ fuse-$(CONFIG_FUSE_DAX) += dax.o
+ fuse-$(CONFIG_FUSE_PASSTHROUGH) += passthrough.o backing.o
+ fuse-$(CONFIG_SYSCTL) += sysctl.o
+diff --git a/fs/fuse/Kconfig b/fs/fuse/Kconfig
+--- a/fs/fuse/Kconfig
++++ b/fs/fuse/Kconfig
+@@ -76,3 +76,24 @@
+ 
+ 	  If you want to allow fuse server/client communication through io-uring,
+ 	  answer Y
++
++config FUSE_FEV_NOTIFY
++	bool "fev: change events from the file server (/dev/fev-fsnotify)"
++	depends on FUSE_FS=y
++	depends on FSNOTIFY
++	help
++	  A device through which a guest agent reports changes the file
++	  server saw happen behind the client. The client's caches are
++	  corrected and the fsnotify events a local change would raise are
++	  raised. See include/uapi/linux/fev_fsnotify.h.
++
++config FUSE_CALLER_OWNER
++	bool "fev: files a FUSE server marks belong to whoever asks"
++	depends on FUSE_FS
++	help
++	  A server whose mount belongs to the initial user namespace may set
++	  FUSE_ATTR_CALLER_OWNER on an object. Every ownership check and
++	  stat() then sees the calling task's fsuid and fsgid as its owner,
++	  until the inode is evicted or a reply says FUSE_ATTR_REAL_OWNER.
++	  For a share of files that all belong to one host user who is no
++	  user of the guest. See include/uapi/linux/fuse.h.

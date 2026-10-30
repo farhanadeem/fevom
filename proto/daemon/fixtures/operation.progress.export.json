@@ -1,0 +1,22 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "operation": {
+      "id": "op-20261014T103000-2",
+      "method": "machines.export",
+      "target": "dev",
+      "state": "done",
+      "phase": "archive",
+      "done_bytes": 1288490188,
+      "total_bytes": 1288490188,
+      "started": "2026-10-14T10:30:00Z",
+      "ended": "2026-10-14T10:30:21Z",
+      "result": {
+        "path": "/Users/ada/Backups/dev.tar.zst",
+        "bytes": 413138944
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "method": "machine.import",
+  "params": {
+    "name": "dev-copy",
+    "config": {
+      "user": "ada",
+      "mac": "02:42:c6:13:00:0d",
+      "address": "198.19.0.13",
+      "share": true
+    }
+  },
+  "result": {
+    "id": 6,
+    "token": "1a2b3c4d5e6f47089a0bcdef12345678"
+  }
+}

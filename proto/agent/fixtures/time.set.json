@@ -1,0 +1,11 @@
+{
+  "method": "time.set",
+  "params": {
+    "unix_ns": 1791633900250000000
+  },
+  "result": {
+    "stepped": true,
+    "offset_ms": -237012.4,
+    "threshold_ms": 100
+  }
+}

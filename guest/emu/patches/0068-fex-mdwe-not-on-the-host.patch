@@ -1,0 +1,17 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
+@@ -560,6 +560,13 @@
+                             // Returns the size of auxv without truncation.
+                             return auxvSize;
+                           }
++#ifndef PR_SET_MDWE
++#define PR_SET_MDWE 65
++#define PR_GET_MDWE 66
++#endif
++                          case PR_SET_MDWE:
++                          case PR_GET_MDWE:
++                            return -EINVAL;
+                           default: Result = ::prctl(option, arg2, arg3, arg4, arg5); break;
+                           }
+                           SYSCALL_ERRNO();

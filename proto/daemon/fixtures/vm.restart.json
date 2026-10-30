@@ -1,0 +1,16 @@
+{
+  "method": "vm.restart",
+  "params": {
+    "no_wait": true
+  },
+  "result": {
+    "seq": 10,
+    "state": "stopping",
+    "engine": "stopping",
+    "boot_id": "b3f1c2",
+    "since": "2026-10-08T12:10:00Z",
+    "pending_restart": [
+      "cpu"
+    ]
+  }
+}

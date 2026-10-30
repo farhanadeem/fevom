@@ -1,0 +1,8 @@
+{
+  "method": "k8s.log",
+  "notification": true,
+  "params": {
+    "subscription": 9,
+    "text": "listening on :8080\nGET / 200 1.2ms\n"
+  }
+}

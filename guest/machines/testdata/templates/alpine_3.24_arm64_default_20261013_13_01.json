@@ -1,0 +1,26 @@
+[
+  {
+    "path": "/etc/hostname",
+    "when": [
+      "create",
+      "copy"
+    ],
+    "template": "{{ container.name }}\n"
+  },
+  {
+    "path": "/etc/hosts",
+    "when": [
+      "create",
+      "copy"
+    ],
+    "template": "127.0.1.1\t{{ container.name }}\n127.0.0.1\tlocalhost localhost.localdomain\n::1\t\tlocalhost localhost.localdomain\n"
+  },
+  {
+    "path": "/etc/inittab",
+    "when": [
+      "create",
+      "copy"
+    ],
+    "template": "# /etc/inittab\n::sysinit:/sbin/openrc sysinit\n::sysinit:/sbin/openrc boot\n::wait:/sbin/openrc default\n\n# Set up a couple of getty's\n::respawn:/sbin/getty 38400 console\n\n# Stuff to do for the 3-finger salute\n::ctrlaltdel:/sbin/reboot\n\n# Stuff to do before rebooting\n::shutdown:/sbin/openrc shutdown\n"
+  }
+]

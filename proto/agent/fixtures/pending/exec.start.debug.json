@@ -1,0 +1,31 @@
+{
+  "method": "exec.start",
+  "params": {
+    "context": "debug",
+    "argv": [],
+    "env": [
+      "TERM=xterm-256color",
+      "COLORTERM=truecolor",
+      "LANG=C.UTF-8"
+    ],
+    "tty": true,
+    "rows": 40,
+    "cols": 120,
+    "debug": {
+      "target": "web",
+      "kind": "container"
+    }
+  },
+  "result": {
+    "id": 24,
+    "token": "c7d8e9f0a1b2c3d4e5f60718293a4b5c",
+    "debug": {
+      "kind": "running",
+      "target_id": "3f2a1b0c9d8e",
+      "name": "web",
+      "image": "nginx:1.29",
+      "read_only": false,
+      "notes": ["tools in /nix; galley install NAME adds a package"]
+    }
+  }
+}

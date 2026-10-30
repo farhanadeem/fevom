@@ -1,0 +1,3 @@
+freed: 298.0 MiB
+images: the downloaded Kubernetes images are kept; the next start needs no network
+kubernetes: off

@@ -1,0 +1,20 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "operation": {
+      "id": "op-20261023T210000-1",
+      "method": "k8s.reset",
+      "target": "kubernetes",
+      "state": "done",
+      "phase": "deleting",
+      "started": "2026-10-23T21:00:00Z",
+      "ended": "2026-10-23T21:00:24Z",
+      "result": {
+        "freed_bytes": 1291845632,
+        "archive_kept": false
+      }
+    }
+  }
+}

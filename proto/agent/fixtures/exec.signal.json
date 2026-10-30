@@ -1,0 +1,8 @@
+{
+  "method": "exec.signal",
+  "params": {
+    "id": 7,
+    "signal": 2
+  },
+  "result": {}
+}

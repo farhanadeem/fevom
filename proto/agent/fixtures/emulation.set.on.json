@@ -1,0 +1,36 @@
+{
+  "method": "emulation.set",
+  "params": {
+    "x86": true
+  },
+  "result": {
+    "x86": true,
+    "registered": true,
+    "translator": "FEX-Emu",
+    "path": "/system/emu/FEX",
+    "version": "FEX-2610",
+    "memory_model": true,
+    "table_enabled": true,
+    "entries": [
+      {
+        "name": "FEX-x86",
+        "enabled": true,
+        "interpreter": "/system/emu/FEX",
+        "flags": "POCF",
+        "fev": true,
+        "magic": "7f454c4601010100000000000000000002000300",
+        "mask": "fffffffffffefe00000000fffffffffffeffffff"
+      },
+      {
+        "name": "FEX-x86_64",
+        "enabled": true,
+        "interpreter": "/system/emu/FEX",
+        "flags": "POCF",
+        "fev": true,
+        "magic": "7f454c4602010100000000000000000002003e00",
+        "mask": "fffffffffffefe00000000fffffffffffeffffff"
+      }
+    ],
+    "restored": 0
+  }
+}

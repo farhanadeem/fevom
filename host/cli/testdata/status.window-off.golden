@@ -1,0 +1,5 @@
+state: running
+engine: ready
+since: 2026-10-10T12:00:00.4Z
+boot: c40d19
+read window: off (no room for one in a guest address space of 36 bits); every read of the data disk is a request

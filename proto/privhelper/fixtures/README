@@ -1,0 +1,3 @@
+Examples of the verbs in privhelper.go's Schema, one file a verb (VERB.json, a second
+VERB.NAME.json). The verbs a helper of this build serves are here; pending/ holds the
+examples of the verbs in Pending, resolver.set and resolver.clear, which are not built.

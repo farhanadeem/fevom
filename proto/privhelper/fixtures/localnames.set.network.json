@@ -1,0 +1,10 @@
+{
+  "method": "localnames.set",
+  "params": {"names": ["app-custom.local", "shop.local"], "network_changed": true},
+  "result": {
+    "names": [
+      {"name": "app-custom.local", "state": "present"},
+      {"name": "shop.local", "state": "removed", "reason": "corp.local's resolver (a VPN's) is configured for a domain above it"}
+    ]
+  }
+}

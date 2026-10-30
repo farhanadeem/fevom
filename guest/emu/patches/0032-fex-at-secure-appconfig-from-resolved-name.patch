@@ -1,0 +1,74 @@
+diff --git a/Source/Common/Config.cpp b/Source/Common/Config.cpp
+--- a/Source/Common/Config.cpp
++++ b/Source/Common/Config.cpp
+@@ -13,13 +13,17 @@
+ #include <FEXCore/Utils/WildcardMatcher.h>
+ #include <FEXHeaderUtils/Filesystem.h>
+ #include <FEXHeaderUtils/SymlinkChecks.h>
++#include <cstdio>
+ #include <cstring>
+ #include <fmt/format.h>
+ #include <functional>
+ #ifndef _WIN32
++#include <fcntl.h>
+ #include <linux/limits.h>
+ #include <pwd.h>
+ #include <sys/auxv.h>
++#include <sys/stat.h>
++#include <unistd.h>
+ #endif
+ #include <optional>
+ #include <utility>
+@@ -435,6 +439,39 @@
+   return Program;
+ }
+ 
++#ifndef _WIN32
++static fextl::string SecureProgramName() {
++  const unsigned long ExecFD = getauxval(AT_EXECFD);
++  if (ExecFD == 0) {
++    return {};
++  }
++  char FDPath[64];
++  snprintf(FDPath, sizeof(FDPath), "/proc/self/fd/%lu", ExecFD);
++  char Link[PATH_MAX];
++  const ssize_t Len = readlink(FDPath, Link, sizeof(Link) - 1);
++  if (Len <= 0 || Link[0] != '/') {
++    return {};
++  }
++  const std::string_view Path(Link, Len);
++  const auto Slash = Path.rfind('/');
++  if (Slash == Path.npos || Slash + 1 >= Path.size() || Path.ends_with(" (deleted)")) {
++    return {};
++  }
++  const fextl::string Dir(Path.substr(0, Slash == 0 ? 1 : Slash));
++  const fextl::string Name(Path.substr(Slash + 1));
++  const int DirFD = open(Dir.c_str(), O_PATH | O_DIRECTORY | O_CLOEXEC);
++  if (DirFD < 0) {
++    return {};
++  }
++  struct stat DirStat {}, EntryStat {}, FileStat {};
++  const bool Trusted = fstat(DirFD, &DirStat) == 0 && DirStat.st_uid == 0 && (DirStat.st_mode & (S_IWGRP | S_IWOTH)) == 0 &&
++                       fstatat(DirFD, Name.c_str(), &EntryStat, AT_SYMLINK_NOFOLLOW) == 0 && fstat(ExecFD, &FileStat) == 0 &&
++                       EntryStat.st_dev == FileStat.st_dev && EntryStat.st_ino == FileStat.st_ino;
++  close(DirFD);
++  return Trusted ? Name : fextl::string {};
++}
++#endif
++
+ ApplicationNames GetApplicationNames(const fextl::vector<fextl::string>& Args, bool ExecFDInterp, int ProgramFDFromEnv) {
+   if (Args.empty()) {
+     // Early exit if we weren't passed an argument
+@@ -445,6 +482,12 @@
+   fextl::string ProgramName {};
+ 
+   Program = RecoverGuestProgramFilename(Args[0], ExecFDInterp, ProgramFDFromEnv);
++
++#ifndef _WIN32
++  if (getauxval(AT_SECURE)) {
++    return ApplicationNames {std::move(Program), SecureProgramName()};
++  }
++#endif
+ 
+   bool Wine = false;
+   for (size_t CurrentProgramNameIndex = 0; CurrentProgramNameIndex < Args.size(); ++CurrentProgramNameIndex) {

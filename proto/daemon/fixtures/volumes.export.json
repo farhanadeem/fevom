@@ -1,0 +1,15 @@
+{
+  "method": "volumes.export",
+  "params": {
+    "name": "pgdata",
+    "path": "/Users/ada/Backups/pgdata.tar.zst"
+  },
+  "result": {
+    "id": "op-20261019T101500-7",
+    "method": "volumes.export",
+    "target": "pgdata",
+    "state": "running",
+    "phase": "archive",
+    "started": "2026-10-19T10:15:00Z"
+  }
+}

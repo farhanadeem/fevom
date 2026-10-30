@@ -1,0 +1,24 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "operation": {
+      "id": "op-20261019T100000-1",
+      "method": "storage.check",
+      "target": "data",
+      "state": "done",
+      "phase": "scrub",
+      "done_bytes": 1073741824,
+      "started": "2026-10-19T10:00:00Z",
+      "ended": "2026-10-19T10:00:04Z",
+      "result": {
+        "auto": true,
+        "read_only": true,
+        "scrubbed_bytes": 1073741824,
+        "corrected": 0,
+        "uncorrectable": 3
+      }
+    }
+  }
+}

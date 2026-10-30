@@ -1,0 +1,8 @@
+{
+  "method": "store.gc",
+  "params": {},
+  "result": {
+    "removed": ["/nix/store/9z8y7x6w5v4u3t2s1r0q9p8o7n6m5l4k-perl-5.40.0"],
+    "freed_bytes": 73400320
+  }
+}

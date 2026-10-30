@@ -1,0 +1,3 @@
+events records=2
+  rename flags=0 mask=0 parent=12 child=57 parent2=14 victim=0 name="main.go" name2="main_old.go"
+  rename flags=isdir mask=0 parent=1 child=12 parent2=1 victim=0 name="src" name2="source"

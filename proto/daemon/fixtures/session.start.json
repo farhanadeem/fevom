@@ -1,0 +1,20 @@
+{
+  "method": "session.start",
+  "params": {
+    "argv": [],
+    "env": [
+      "TERM=xterm-256color"
+    ],
+    "dir": "/Users/ada/src/app",
+    "tty": true,
+    "rows": 50,
+    "cols": 160,
+    "login": true
+  },
+  "result": {
+    "id": 9,
+    "token": "3e2d1c0b9a8f47e6d5c4b3a291807f6e",
+    "machine": "dev",
+    "user": "ada"
+  }
+}

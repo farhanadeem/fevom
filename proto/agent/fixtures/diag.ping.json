@@ -1,0 +1,16 @@
+{
+  "method": "diag.ping",
+  "params": {
+    "address": "1.1.1.1",
+    "count": 3,
+    "ttl": 1,
+    "timeout_ms": 2000
+  },
+  "result": {
+    "sent": 3,
+    "received": 3,
+    "from": "198.19.1.1",
+    "ttl_exceeded": true,
+    "avg_ms": 0.4
+  }
+}

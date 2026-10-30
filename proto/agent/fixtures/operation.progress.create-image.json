@@ -1,0 +1,11 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "id": 3,
+    "method": "machine.create",
+    "state": "running",
+    "phase": "image",
+    "done_bytes": 196083712
+  }
+}

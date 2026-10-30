@@ -1,0 +1,7 @@
+{
+  "method": "storage.check",
+  "params": {},
+  "result": {
+    "id": 7
+  }
+}

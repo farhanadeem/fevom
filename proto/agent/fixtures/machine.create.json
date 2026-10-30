@@ -1,0 +1,54 @@
+{
+  "method": "machine.create",
+  "params": {
+    "name": "dev",
+    "image": {
+      "distro": "ubuntu",
+      "release": "questing",
+      "arch": "arm64",
+      "variant": "cloud",
+      "serial": "20261014_07:42",
+      "templates": [
+        {
+          "path": "/etc/hostname",
+          "when": [
+            "create",
+            "copy"
+          ],
+          "template": "{{ container.name }}\n"
+        },
+        {
+          "path": "/etc/hosts",
+          "when": [
+            "create",
+            "copy"
+          ],
+          "template": "127.0.1.1\t{{ container.name }}\n127.0.0.1\tlocalhost\n::1\t\tlocalhost ip6-localhost ip6-loopback\n"
+        },
+        {
+          "path": "/var/lib/cloud/seed/nocloud-net/meta-data",
+          "when": [
+            "create",
+            "copy"
+          ],
+          "template": "instance-id: {{ container.name }}\nlocal-hostname: {{ container.name }}\n{{ config_get(\"user.meta-data\", \"\") }}\n"
+        }
+      ]
+    },
+    "user": {
+      "name": "ada",
+      "uid": 501
+    },
+    "config": {
+      "user": "ada",
+      "mac": "02:42:c6:13:00:0a",
+      "address": "198.19.0.10",
+      "share": true
+    },
+    "user_data": "#cloud-config\npackages: [git, make]\nruncmd:\n  - [make, -C, /srv/app]\n"
+  },
+  "result": {
+    "id": 3,
+    "token": "5c1e0a7b3d9f42e68a0b1c2d3e4f5a6b"
+  }
+}

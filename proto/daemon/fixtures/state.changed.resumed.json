@@ -1,0 +1,15 @@
+{
+  "method": "state.changed",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "status": {
+      "seq": 32,
+      "state": "running",
+      "engine": "ready",
+      "boot_id": "c40d19",
+      "since": "2026-10-10T22:20:30.871Z",
+      "pending_restart": []
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "method": "engine.configure",
+  "params": {
+    "config": {
+      "default-address-pools": [
+        {
+          "base": "10.200.0.0/16",
+          "size": 24
+        }
+      ],
+      "features": {
+        "containerd-snapshotter": true
+      }
+    }
+  },
+  "result": {
+    "state": "accepted",
+    "restart_needed": true
+  }
+}

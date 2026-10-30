@@ -1,0 +1,26 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Passthrough.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Passthrough.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Passthrough.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Passthrough.cpp
+@@ -14,6 +14,7 @@
+ #include <stdint.h>
+ #include <sys/epoll.h>
+ #include <sys/select.h>
++#include <sys/mman.h>
+ 
+ namespace FEX::HLE {
+ #ifdef ARCHITECTURE_arm64
+@@ -445,7 +446,13 @@
+     REGISTER_SYSCALL_IMPL_X64(rt_sigqueueinfo, SyscallPassthrough3<SYSCALL_DEF(rt_sigqueueinfo)>);
+     REGISTER_SYSCALL_IMPL_X64(fstatfs, SyscallPassthrough2<SYSCALL_DEF(fstatfs)>);
+     REGISTER_SYSCALL_IMPL_X64(sched_rr_get_interval, SyscallPassthrough2<SYSCALL_DEF(sched_rr_get_interval)>);
+-    REGISTER_SYSCALL_IMPL_X64(mlockall, SyscallPassthrough1<SYSCALL_DEF(mlockall)>);
++    REGISTER_SYSCALL_IMPL_X64(mlockall, [](FEXCore::Core::CpuStateFrame* Frame, int flags) -> uint64_t {
++      if (flags & (MCL_CURRENT | MCL_FUTURE)) {
++        flags |= MCL_ONFAULT;
++      }
++      uint64_t Result = ::syscall(SYSCALL_DEF(mlockall), flags);
++      SYSCALL_ERRNO();
++    });
+     REGISTER_SYSCALL_IMPL_X64(munlockall, SyscallPassthrough0<SYSCALL_DEF(munlockall)>);
+     REGISTER_SYSCALL_IMPL_X64(adjtimex, SyscallPassthrough1<SYSCALL_DEF(adjtimex)>);
+     REGISTER_SYSCALL_IMPL_X64(setrlimit, SyscallPassthrough2<SYSCALL_DEF(setrlimit)>);

@@ -1,0 +1,12 @@
+diff --git a/FEXCore/Source/Interface/Config/Config.json.in b/FEXCore/Source/Interface/Config/Config.json.in
+--- a/FEXCore/Source/Interface/Config/Config.json.in
++++ b/FEXCore/Source/Interface/Config/Config.json.in
+@@ -12,7 +12,7 @@
+       },
+       "MaxInst": {
+         "Type": "int32",
+-        "Default": "5000",
++        "Default": "150",
+         "AffectsCodeGen": "true",
+         "Desc": [
+           "Maximum number of instruction to store in a block"

@@ -1,0 +1,21 @@
+{
+  "method": "files.changed",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "share": true,
+    "root": "/",
+    "mount": "/mnt/mac",
+    "hidden": [
+      "/Users/someone/.fev/data",
+      "/Users/someone/.fev/run"
+    ],
+    "events": true,
+    "watch": {
+      "seq": 4,
+      "paths": [
+        "/Users/someone/src/app"
+      ]
+    }
+  }
+}

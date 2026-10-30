@@ -1,0 +1,17 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 40,
+    "state": "stopped",
+    "stop_requested": true,
+    "engine": "stopped",
+    "since": "2026-10-10T23:01:10Z",
+    "pending_restart": [],
+    "last_exit": {
+      "code": 0,
+      "at": "2026-10-10T23:01:10Z",
+      "expected": true
+    }
+  }
+}

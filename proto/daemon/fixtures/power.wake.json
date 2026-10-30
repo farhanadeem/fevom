@@ -1,0 +1,13 @@
+{
+  "method": "power.wake",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "time": "2026-10-10T22:20:30.872Z",
+    "resumed": true,
+    "paused_ms": 150337.2,
+    "clock_stepped": true,
+    "clock_offset_ms": -237012.4,
+    "released": 1
+  }
+}

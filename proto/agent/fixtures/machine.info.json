@@ -1,0 +1,24 @@
+{
+  "method": "machine.info",
+  "params": {
+    "name": "dev"
+  },
+  "result": {
+    "name": "dev",
+    "state": "running",
+    "image": {
+      "distro": "ubuntu",
+      "release": "questing",
+      "arch": "arm64",
+      "variant": "cloud",
+      "serial": "20261014_07:42"
+    },
+    "uuid": "8f14e45f-ceea-467a-9575-0c7a3c5d2b11",
+    "init": "systemd",
+    "address": "198.19.0.10",
+    "pid": 2311,
+    "started_ms": 61234.5,
+    "ready_ms": 62102.0,
+    "disk_bytes": 1288490188
+  }
+}

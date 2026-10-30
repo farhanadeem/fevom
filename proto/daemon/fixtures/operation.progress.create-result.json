@@ -1,0 +1,40 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "operation": {
+      "id": "op-20261014T091155-1",
+      "method": "machines.create",
+      "target": "dev",
+      "state": "done",
+      "phase": "cloud-init",
+      "started": "2026-10-14T09:11:55Z",
+      "ended": "2026-10-14T09:12:41Z",
+      "result": {
+        "machine": {
+          "name": "dev",
+          "state": "running",
+          "image": {
+            "distro": "ubuntu",
+            "release": "questing",
+            "arch": "arm64",
+            "variant": "cloud",
+            "serial": "20261014_07:42"
+          },
+          "user": "ada",
+          "default": true,
+          "address": "198.19.0.10",
+          "disk_size": 1288490188,
+          "since": "2026-10-14T09:12:41Z"
+        },
+        "cloud_init": {
+          "status": "done",
+          "recoverable_errors": [
+            "WARNING: Failed generating key type rsa to file /etc/ssh/ssh_host_rsa_key"
+          ]
+        }
+      }
+    }
+  }
+}

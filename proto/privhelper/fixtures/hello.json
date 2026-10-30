@@ -1,0 +1,19 @@
+{
+  "method": "hello",
+  "params": {},
+  "result": {
+    "protocol_version": 1,
+    "security_level": 1,
+    "build": "v0.7.0-12-g8a210f3",
+    "uid": 501,
+    "home": "/Users/ada",
+    "base": "198.19.0.0/16",
+    "base6": "fd5b:6e2a:91c0::/48",
+    "resolver_port": 15353,
+    "resolver": "fevs",
+    "docker_sock": "foreign",
+    "docker_sock_target": "/Users/ada/.reference/run/docker.sock",
+    "docker_sock_link": true,
+    "local_names": ["app-custom.local"]
+  }
+}

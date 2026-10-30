@@ -1,0 +1,19 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 15,
+    "state": "running",
+    "engine": "ready",
+    "boot_id": "a3f9c2",
+    "since": "2026-10-18T09:12:30.2Z",
+    "pending_restart": [],
+    "emulation": {
+      "state": "off",
+      "translator": "FEX-Emu",
+      "version": "FEX-2610",
+      "hardware_ordering": true,
+      "pending": true
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "method": "storage.info",
+  "params": {},
+  "result": {
+    "device": "/dev/vda",
+    "fstype": "btrfs",
+    "fsid": "0b1e5f6c-6a8e-4a55-9d0b-3c1d2e4f5a6b",
+    "layout": 2,
+    "size_bytes": 1099511627776,
+    "used_bytes": 3221225472,
+    "mount_rung": 3,
+    "read_only": false,
+    "steps": [
+      {
+        "rung": 1,
+        "name": "mount",
+        "error": "mount -o discard=async,nodatasum,nodatacow: input/output error (the kernel log has the reason)"
+      },
+      {
+        "rung": 2,
+        "name": "btrfs rescue super-recover",
+        "skipped": "the first superblock is valid"
+      },
+      {
+        "rung": 3,
+        "name": "btrfs rescue zero-log",
+        "lost": "the fsync log could not be replayed and was dropped: writes acknowledged since the last commit (up to 30 s before the stop) are gone"
+      }
+    ],
+    "errors": {
+      "write": 0,
+      "read": 0,
+      "flush": 0,
+      "corruption": 0,
+      "generation": 0
+    },
+    "quota": {
+      "limited": true,
+      "limit_bytes": 13958643712,
+      "referenced_bytes": 3221225472,
+      "reserved_bytes": 0
+    }
+  }
+}

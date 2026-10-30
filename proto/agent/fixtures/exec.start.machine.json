@@ -1,0 +1,24 @@
+{
+  "method": "exec.start",
+  "params": {
+    "context": "machine",
+    "machine": "dev",
+    "argv": [
+      "make",
+      "test"
+    ],
+    "env": [
+      "TERM=xterm-256color",
+      "LANG=C.UTF-8"
+    ],
+    "dir": "/Users/ada/src/app",
+    "stdin_tty": true,
+    "rows": 50,
+    "cols": 160,
+    "shell": true
+  },
+  "result": {
+    "id": 12,
+    "token": "0f1e2d3c4b5a49788796a5b4c3d2e1f0"
+  }
+}

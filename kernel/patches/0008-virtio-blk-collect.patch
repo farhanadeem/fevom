@@ -1,0 +1,117 @@
+diff --git a/drivers/block/virtio_blk.c b/drivers/block/virtio_blk.c
+--- a/drivers/block/virtio_blk.c
++++ b/drivers/block/virtio_blk.c
+@@ -68,6 +68,26 @@
+ 	.get = fev_window_reads_get,
+ };
+ module_param_cb(fev_window_reads, &fev_window_reads_ops, NULL, 0444);
++
++static bool fev_collect = true;
++module_param(fev_collect, bool, 0644);
++MODULE_PARM_DESC(fev_collect, "Collect completions after a notification, without an interrupt");
++
++static DEFINE_PER_CPU(unsigned long, fev_collected);
++
++static int fev_collected_get(char *buf, const struct kernel_param *kp)
++{
++	unsigned long sum = 0;
++	int cpu;
++
++	for_each_possible_cpu(cpu)
++		sum += per_cpu(fev_collected, cpu);
++	return sysfs_emit(buf, "%lu\n", sum);
++}
++static const struct kernel_param_ops fev_collected_ops = {
++	.get = fev_collected_get,
++};
++module_param_cb(fev_collected, &fev_collected_ops, NULL, 0444);
+ 
+ static int major;
+ static DEFINE_IDA(vd_index_ida);
+@@ -397,6 +417,33 @@
+ 
+ 			if (likely(!blk_should_fake_timeout(req->q)))
+ 				blk_mq_complete_request(req);
++			req_done = true;
++		}
++	} while (!virtqueue_enable_cb(vq));
++
++	if (req_done)
++		blk_mq_start_stopped_hw_queues(vblk->disk->queue, true);
++	spin_unlock_irqrestore(&vblk->vqs[qid].lock, flags);
++}
++
++static void virtblk_collect(struct virtio_blk *vblk, int qid)
++{
++	struct virtqueue *vq = vblk->vqs[qid].vq;
++	bool req_done = false;
++	struct virtblk_req *vbr;
++	unsigned long flags;
++	unsigned int len;
++
++	spin_lock_irqsave(&vblk->vqs[qid].lock, flags);
++	do {
++		virtqueue_disable_cb(vq);
++		while ((vbr = virtqueue_get_buf(vq, &len)) != NULL) {
++			struct request *req = blk_mq_rq_from_pdu(vbr);
++
++			if (likely(!blk_should_fake_timeout(req->q)))
++				blk_mq_complete_request_direct(req,
++						virtblk_request_done);
++			this_cpu_inc(fev_collected);
+ 			req_done = true;
+ 		}
+ 	} while (!virtqueue_enable_cb(vq));
+@@ -499,6 +546,7 @@
+ 	unsigned long flags;
+ 	int qid = hctx->queue_num;
+ 	bool notify = false;
++	bool collect = READ_ONCE(fev_collect);
+ 	blk_status_t status;
+ 	int err;
+ 
+@@ -527,12 +575,18 @@
+ 	}
+ 
+ 	WRITE_ONCE(vblk->vqs[qid].unkicked, !bd->last);
+-	if (bd->last && virtqueue_kick_prepare(vblk->vqs[qid].vq))
++	if (bd->last && virtqueue_kick_prepare(vblk->vqs[qid].vq)) {
+ 		notify = true;
++		if (collect)
++			virtqueue_disable_cb(vblk->vqs[qid].vq);
++	}
+ 	spin_unlock_irqrestore(&vblk->vqs[qid].lock, flags);
+ 
+-	if (notify)
++	if (notify) {
+ 		virtqueue_notify(vblk->vqs[qid].vq);
++		if (collect)
++			virtblk_collect(vblk, qid);
++	}
+ 	return BLK_STS_OK;
+ }
+ 
+@@ -549,6 +603,7 @@
+ {
+ 	struct request *req;
+ 	unsigned long flags;
++	bool collect = READ_ONCE(fev_collect);
+ 	bool kick;
+ 
+ 	spin_lock_irqsave(&vq->lock, flags);
+@@ -567,10 +622,15 @@
+ 
+ 	WRITE_ONCE(vq->unkicked, false);
+ 	kick = virtqueue_kick_prepare(vq->vq);
++	collect = collect && kick;
++	if (collect)
++		virtqueue_disable_cb(vq->vq);
+ 	spin_unlock_irqrestore(&vq->lock, flags);
+ 
+ 	if (kick)
+ 		virtqueue_notify(vq->vq);
++	if (collect)
++		virtblk_collect(vq->vq->vdev->priv, vq->vq->index);
+ }
+ 
+ static void virtio_queue_rqs(struct rq_list *rqlist)

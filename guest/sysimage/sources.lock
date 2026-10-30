@@ -1,0 +1,9 @@
+source btrfs-progs v7.1 GPL-2.0-only d1f55cc2971398c9142eaa79d203e63d586a3b4b867f956664a1d68322cd4e34 https://mirrors.edge.kernel.org/pub/linux/kernel/people/kdave/btrfs-progs/btrfs-progs-v7.1.tar.xz
+linked btrfs-progs glibc LGPL-2.1-or-later libc6-dev glibc 2.41-12+deb13u4
+linked btrfs-progs libblkid LGPL-2.1-or-later libblkid-dev util-linux 2.41.5-0+deb13u1
+linked btrfs-progs libuuid BSD-3-Clause uuid-dev util-linux 2.41.5-0+deb13u1
+linked btrfs-progs zlib Zlib zlib1g-dev zlib 1:1.3.dfsg+really1.3.1-1
+linked btrfs-progs lzo GPL-2.0-or-later liblzo2-dev lzo2 2.10-3
+linked btrfs-progs zstd BSD-3-Clause libzstd-dev libzstd 1.5.7+dfsg-1
+source busybox 1.37.0 GPL-2.0-only 3311dff32e746499f4df0d5df04d7eb396382d7e108bb9250e7b519b837043a4 https://busybox.net/downloads/busybox-1.37.0.tar.bz2
+linked busybox glibc LGPL-2.1-or-later libc6-dev glibc 2.41-12+deb13u4

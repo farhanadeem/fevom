@@ -1,0 +1,7 @@
+{
+  "method": "daemon.shutdown",
+  "params": {
+    "stop_requested": true
+  },
+  "result": {}
+}

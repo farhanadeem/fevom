@@ -1,0 +1,25 @@
+Terms
+=====
+
+Fevom is copyright (C) 2026 Farhan Nadeem. It is free software: you can
+redistribute it and/or modify it under the terms of the GNU General Public
+License as published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version. The licence's text is
+LICENSE, beside this file.
+
+Fevom is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+details.
+
+Fevom's own source code for this build is published with each release (the
+tag of the same version in fev's repository,
+https://github.com/farhanadeem/fevom) and is offered in SOURCE-OFFER.txt.
+
+Each third-party part of fev is under its own licence, in this folder;
+nothing here limits the rights those licences give you.
+
+In particular, for the parts under the LGPL (FEX's statically linked glibc
+and libstdc++, see README.txt): you may modify fev's x86 translator for
+your own use, and reverse engineer it to debug such modifications; nothing
+in these terms forbids it.

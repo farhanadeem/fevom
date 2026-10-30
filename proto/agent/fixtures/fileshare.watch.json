@@ -1,0 +1,24 @@
+{
+  "method": "fileshare.watch",
+  "params": {
+    "paths": [
+      "/Users/someone/src/app",
+      "/private/tmp/tmp.Xq3f",
+      "/Users/someone/gone",
+      "/Users/someone/.fev/data"
+    ]
+  },
+  "result": {
+    "watching": 2,
+    "rejected": [
+      {
+        "path": "/Users/someone/gone",
+        "reason": "missing"
+      },
+      {
+        "path": "/Users/someone/.fev/data",
+        "reason": "outside"
+      }
+    ]
+  }
+}

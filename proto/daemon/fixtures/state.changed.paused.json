@@ -1,0 +1,16 @@
+{
+  "method": "state.changed",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "status": {
+      "seq": 31,
+      "state": "paused",
+      "pause_reason": "sleep",
+      "engine": "ready",
+      "boot_id": "c40d19",
+      "since": "2026-10-10T22:14:03.512Z",
+      "pending_restart": []
+    }
+  }
+}

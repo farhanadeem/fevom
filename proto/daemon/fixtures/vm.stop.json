@@ -1,0 +1,13 @@
+{
+  "method": "vm.stop",
+  "params": {
+    "timeout_ms": 5000
+  },
+  "result": {
+    "seq": 9,
+    "state": "stopped",
+    "engine": "stopped",
+    "since": "2026-10-08T12:10:00.5Z",
+    "pending_restart": []
+  }
+}

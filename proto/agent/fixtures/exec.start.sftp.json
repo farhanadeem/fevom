@@ -1,0 +1,14 @@
+{
+  "method": "exec.start",
+  "params": {
+    "context": "machine",
+    "machine": "u24",
+    "user": "ada",
+    "argv": [],
+    "subsystem": "sftp"
+  },
+  "result": {
+    "id": 14,
+    "token": "b1c2d3e4f5a6470819203a4b5c6d7e8f"
+  }
+}

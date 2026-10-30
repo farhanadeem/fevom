@@ -1,0 +1,32 @@
+{
+  "method": "forwards.list",
+  "params": {},
+  "result": {
+    "forwards": [
+      {
+        "id": "docker/3f2a9c1d7e10/tcp/8080",
+        "source": "docker",
+        "owner": "3f2a9c1d7e10b6a4c2d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+        "proto": "tcp",
+        "mac": [
+          "127.0.0.1:8080",
+          "[::1]:8080"
+        ],
+        "guest": "127.0.0.1:8080",
+        "state": "active"
+      },
+      {
+        "id": "docker/3f2a9c1d7e10/udp/5353",
+        "source": "docker",
+        "owner": "3f2a9c1d7e10b6a4c2d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+        "proto": "udp",
+        "mac": [
+          "127.0.0.1:5353",
+          "[::1]:5353"
+        ],
+        "guest": "172.17.0.1:5353",
+        "state": "active"
+      }
+    ]
+  }
+}

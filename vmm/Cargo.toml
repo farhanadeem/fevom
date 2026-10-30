@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["hvf-sys", "fevvm", "fileshare"]
+exclude = ["fuzz"]
+
+[workspace.package]
+edition = "2021"
+license-file = "../LICENSE"
+publish = false

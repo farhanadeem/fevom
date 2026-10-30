@@ -1,0 +1,84 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+@@ -64,7 +64,7 @@
+   ThreadObject->SignalInfo.Delegator->HandleSignal(ThreadObject, Signal, Info, UContext);
+ }
+ 
+-static uint64_t SigIsMember(GuestSAMask* Set, int Signal) {
++[[maybe_unused]] static uint64_t SigIsMember(GuestSAMask* Set, int Signal) {
+   // Signal 0 isn't real, so everything is offset by one inside the set
+   Signal -= 1;
+   return (Set->Val >> Signal) & 1;
+@@ -860,7 +860,7 @@
+   for (size_t i = 1; i < HostHandlers.size(); ++i) {
+     if (HostHandlers[i].Required.load(std::memory_order_relaxed)) {
+       SignalHandler.HostAction.sa_mask &= ~(1ULL << (i - 1));
+-    } else if (SigIsMember(&SignalHandler.GuestAction.sa_mask, i)) {
++    } else {
+       SignalHandler.HostAction.sa_mask |= (1ULL << (i - 1));
+     }
+   }
+@@ -972,6 +972,13 @@
+     HostHandlers[Signal].DefaultBehaviour = Behaviour;
+   }
+ 
++  HostHandlers[SIGILL].Required = true;
++  HostHandlers[SIGSEGV].Required = true;
++#ifdef ARCHITECTURE_arm64
++  HostHandlers[SIGBUS].Required = true;
++#endif
++  HostHandlers[SignalDelegator::SIGNAL_FOR_PAUSE].Required = true;
++
+   // Register frontend SIGILL handler for forced assertion.
+   RegisterFrontendHostSignalHandler(
+     SIGILL,
+@@ -1119,18 +1126,37 @@
+   // Linux signal handlers are per-process rather than per thread
+   // Multiple threads could be calling in to this
+   std::lock_guard lk(HostDelegatorMutex);
++  const bool NewlyRequired = Required && !HostHandlers[Signal].Required.load(std::memory_order_relaxed);
+   HostHandlers[Signal].Required = Required;
+   InstallHostThunk(Signal);
++  if (NewlyRequired) {
++    RefreshInstalledThunkMasks(Signal);
++  }
+ }
+ 
+ void SignalDelegator::FrontendRegisterFrontendHostSignalHandler(int Signal, bool Required) {
+   // Linux signal handlers are per-process rather than per thread
+   // Multiple threads could be calling in to this
+   std::lock_guard lk(HostDelegatorMutex);
++  const bool NewlyRequired = Required && !HostHandlers[Signal].Required.load(std::memory_order_relaxed);
+   HostHandlers[Signal].Required = Required;
+   InstallHostThunk(Signal);
++  if (NewlyRequired) {
++    RefreshInstalledThunkMasks(Signal);
++  }
+ }
+ 
++void SignalDelegator::RefreshInstalledThunkMasks(int NewSignal) {
++  for (size_t i = 1; i < HostHandlers.size(); ++i) {
++    if (i == static_cast<size_t>(NewSignal) || i == SIGKILL || i == SIGSTOP || !HostHandlers[i].Installed) {
++      continue;
++    }
++    if (HostHandlers[i].HostAction.sa_mask & (1ULL << (NewSignal - 1))) {
++      UpdateHostThunk(i);
++    }
++  }
++}
++
+ void SignalDelegator::RegisterHostSignalHandlerForGuest(int Signal, FEX::HLE::HostSignalDelegatorFunctionForGuest Func) {
+   std::lock_guard lk(HostDelegatorMutex);
+   HostHandlers[Signal].GuestHandler = std::move(Func);
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.h b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.h
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.h
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.h
+@@ -208,6 +208,7 @@
+    * It's a process level signal handler so one must be careful
+    */
+   void FrontendRegisterHostSignalHandler(int Signal, bool Required);
++  void RefreshInstalledThunkMasks(int NewSignal);
+   void FrontendRegisterFrontendHostSignalHandler(int Signal, bool Required);
+ 
+   void SetHostSignalHandler(int Signal, HostSignalDelegatorFunction Func) {

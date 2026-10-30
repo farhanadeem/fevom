@@ -1,0 +1,5 @@
+{
+  "method": "mac_addresses.set",
+  "params": {"addresses": ["172.16.30.14", "fdc5:717e:5a14:45fd:18c2:7a9e:3b10:5d2f", "100.101.102.103"]},
+  "result": {}
+}

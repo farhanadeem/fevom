@@ -1,0 +1,24 @@
+{
+  "method": "machines.changed",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "removed": true,
+    "machine": {
+      "name": "old",
+      "state": "stopped",
+      "image": {
+        "distro": "alpine",
+        "release": "3.23",
+        "arch": "arm64",
+        "variant": "default",
+        "serial": "20261014_13:00"
+      },
+      "user": "ada",
+      "address": "198.19.0.13",
+      "disk_size": 52428800,
+      "since": "2026-10-14T10:50:12Z",
+      "last_exit": "stopped"
+    }
+  }
+}

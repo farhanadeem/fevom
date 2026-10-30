@@ -1,0 +1,200 @@
+diff --git a/FEXCore/Source/Interface/Context/Context.cpp b/FEXCore/Source/Interface/Context/Context.cpp
+--- a/FEXCore/Source/Interface/Context/Context.cpp
++++ b/FEXCore/Source/Interface/Context/Context.cpp
+@@ -56,6 +56,11 @@
+   return Thread->CPUBackend->IsAddressInCodeBuffer(Address) || CodeCache.IsAddressInMappedCodeBuffer(Address);
+ }
+ 
++void FEXCore::Context::ContextImpl::SetCurrentBlockFromHostPC(FEXCore::Core::InternalThreadState* Thread, uintptr_t HostPC) {
++  Thread->CurrentFrame->State.InlineJITBlockHeader =
++    Thread->CPUBackend ? reinterpret_cast<uint64_t>(Thread->CPUBackend->FindRegionStart(HostPC)) : 0;
++}
++
+ bool FEXCore::Context::ContextImpl::RequiresRelocatableConstants() const {
+   // Support relocation when generating a cache or when generating reference code for validation
+   return CodeCache.IsGeneratingCache || FEXCore::Config::Get_ENABLECODECACHEVALIDATION() || DiskCache.IsWritingDiskCache();
+diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interface/Context/Context.h
+--- a/FEXCore/Source/Interface/Context/Context.h
++++ b/FEXCore/Source/Interface/Context/Context.h
+@@ -236,6 +236,7 @@
+   void ConfigureAOTGen(FEXCore::Core::InternalThreadState* Thread, fextl::set<uint64_t>* ExternalBranches, uint64_t SectionMaxAddress) override;
+ 
+   bool IsAddressInCodeBuffer(FEXCore::Core::InternalThreadState* Thread, uintptr_t Address) const override;
++  void SetCurrentBlockFromHostPC(FEXCore::Core::InternalThreadState* Thread, uintptr_t HostPC) override;
+ 
+   // returns false if a handler was already registered
+   std::optional<CustomIRResult>
+diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
+--- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
++++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
+@@ -338,6 +338,21 @@
+     return nullptr;
+   }
+ 
++  const uint8_t* CPUBackend::FindRegionStart(uintptr_t Address) const {
++    if (!CurrentCodeBuffer) {
++      return nullptr;
++    }
++    if (auto Start = CurrentCodeBuffer->FindRegionStart(Address)) {
++      return Start;
++    }
++    for (const auto& Buffer : SignalHandlerCodeBuffers) {
++      if (auto Start = Buffer->FindRegionStart(Address)) {
++        return Start;
++      }
++    }
++    return nullptr;
++  }
++
+   bool CPUBackend::IsAddressInCodeBuffer(uintptr_t Address) const {
+     const auto CheckCodeBuffer = [](const CodeBuffer& Buffer, uintptr_t Address) {
+       const auto BufferPtr = reinterpret_cast<uintptr_t>(Buffer.GetBufferBase());
+diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interface/Core/CPUBackend.h
+--- a/FEXCore/Source/Interface/Core/CPUBackend.h
++++ b/FEXCore/Source/Interface/Core/CPUBackend.h
+@@ -132,6 +132,7 @@
+     virtual void ClearRelocations() {}
+ 
+     bool IsAddressInCodeBuffer(uintptr_t Address) const;
++    const uint8_t* FindRegionStart(uintptr_t Address) const;
+ 
+     // Updates the CodeBuffer if needed and returns a reference to the old one.
+     // The returned reference should be kept alive carefully to avoid early deletion of resources.
+diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
+--- a/FEXCore/Source/Interface/Core/Core.cpp
++++ b/FEXCore/Source/Interface/Core/Core.cpp
+@@ -150,6 +150,7 @@
+ 
+ uint64_t ContextImpl::RestoreRIPFromHostPC(FEXCore::Core::InternalThreadState* Thread, uint64_t HostPC) {
+   const auto Frame = Thread->CurrentFrame;
++  SetCurrentBlockFromHostPC(Thread, HostPC);
+   const uint64_t BlockBegin = Frame->State.InlineJITBlockHeader;
+   auto [InlineHeader, InlineTail] = GetFrameBlockInfo(Thread->CurrentFrame);
+ 
+diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+--- a/FEXCore/Source/Interface/Core/JIT/JIT.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+@@ -826,11 +826,7 @@
+ #endif
+ }
+ 
+-void Arm64JITCore::EmitEntryPoint(ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF) {
+-  // Get the address of the JITCodeHeader and store in to the core state.
+-  // Two instruction cost, each 1 cycle.
+-  adr_OrRestart(TMP1, &HeaderLabel);
+-  str(TMP1, STATE, offsetof(FEXCore::Core::CPUState, InlineJITBlockHeader));
++void Arm64JITCore::EmitEntryPoint([[maybe_unused]] ARMEmitter::BackwardLabel& HeaderLabel, bool CheckTF) {
+ 
+   EmitSuspendInterruptCheck();
+ 
+@@ -894,6 +890,7 @@
+     }
+   }
+ 
++  CurrentCodeBuffer->MarkRegionStart(AllocatedInfo.BufferAllocationOffset);
+   return AllocatedInfo;
+ }
+ 
+diff --git a/FEXCore/Source/Interface/Core/SharedCodeBufferManager.cpp b/FEXCore/Source/Interface/Core/SharedCodeBufferManager.cpp
+--- a/FEXCore/Source/Interface/Core/SharedCodeBufferManager.cpp
++++ b/FEXCore/Source/Interface/Core/SharedCodeBufferManager.cpp
+@@ -37,14 +37,23 @@
+ 
+   LookupCache = fextl::make_unique<GuestToHostMap>();
+ 
++  RegionStartsSize = FEXCore::AlignUp((((Size >> 4) + 63) >> 6) * sizeof(uint64_t), FEXCore::Utils::FEX_PAGE_SIZE);
++  RegionStarts = static_cast<uint64_t*>(FEXCore::Allocator::VirtualAlloc(RegionStartsSize, false));
++  LOGMAN_THROW_A_FMT(!!RegionStarts, "Couldn't allocate the code buffer's region map");
++
+   CodeBufferEnd = Ptr + UsableSize();
+   CodeBufferOffset = Ptr;
+ }
+ 
+ CodeBuffer::~CodeBuffer() {
+   FEXCore::Allocator::VirtualFree(Ptr, AllocatedSize);
++  FEXCore::Allocator::VirtualFree(RegionStarts, RegionStartsSize);
+ }
+ 
++void CodeBuffer::ClearRegionStarts() {
++  FEXCore::Allocator::VirtualDontNeed(RegionStarts, RegionStartsSize);
++}
++
+ SharedCodeBufferManager::SharedCodeBufferManager() {
+   FEX_CONFIG_OPT(GlobalJITNaming, GLOBALJITNAMING);
+   FEX_CONFIG_OPT(LibraryJITNaming, LIBRARYJITNAMING);
+diff --git a/FEXCore/Source/Interface/Core/SharedCodeBufferManager.h b/FEXCore/Source/Interface/Core/SharedCodeBufferManager.h
+--- a/FEXCore/Source/Interface/Core/SharedCodeBufferManager.h
++++ b/FEXCore/Source/Interface/Core/SharedCodeBufferManager.h
+@@ -12,6 +12,8 @@
+ #include <FEXCore/Utils/SignalScopeGuards.h>
+ #include <FEXCore/Utils/TypeDefines.h>
+ 
++#include <atomic>
++#include <bit>
+ #include <cstddef>
+ #include <cstdint>
+ 
+@@ -84,14 +86,41 @@
+   // Trivially reset the allocator.
+   void Reset() {
+     CodeBufferOffset = Ptr;
++    ClearRegionStarts();
+   }
+ 
++  void MarkRegionStart(const uint8_t* Start) {
++    const size_t Unit = static_cast<size_t>(Start - Ptr) >> 4;
++    std::atomic_ref<uint64_t>(RegionStarts[Unit >> 6]).fetch_or(1ULL << (Unit & 63), std::memory_order_release);
++  }
++  const uint8_t* FindRegionStart(uintptr_t PC) const {
++    const auto Base = reinterpret_cast<uintptr_t>(Ptr);
++    if (PC < Base || PC >= Base + UsableSize()) {
++      return nullptr;
++    }
++    const size_t Unit = (PC - Base) >> 4;
++    size_t Word = Unit >> 6;
++    uint64_t Bits = std::atomic_ref<uint64_t>(RegionStarts[Word]).load(std::memory_order_acquire) & (~0ULL >> (63 - (Unit & 63)));
++    while (Bits == 0) {
++      if (Word == 0) {
++        return nullptr;
++      }
++      --Word;
++      Bits = std::atomic_ref<uint64_t>(RegionStarts[Word]).load(std::memory_order_acquire);
++    }
++    return Ptr + (((Word << 6) + (63 - std::countl_zero(Bits))) << 4);
++  }
++
+   // Returns the base of the buffer.
+   uint8_t* GetBufferBase() const {
+     return Ptr;
+   }
+ 
+ private:
++  void ClearRegionStarts();
++  uint64_t* RegionStarts {};
++  size_t RegionStartsSize {};
++
+   uint8_t* Ptr;
+   uint8_t* CodeBufferEnd;
+   size_t AllocatedSize; // including guard page; see UsableSize()
+diff --git a/FEXCore/include/FEXCore/Core/Context.h b/FEXCore/include/FEXCore/Core/Context.h
+--- a/FEXCore/include/FEXCore/Core/Context.h
++++ b/FEXCore/include/FEXCore/Core/Context.h
+@@ -158,6 +158,7 @@
+    * @return true if PC is inside the thread's code buffers.
+    */
+   FEX_DEFAULT_VISIBILITY virtual bool IsAddressInCodeBuffer(FEXCore::Core::InternalThreadState* Thread, uintptr_t Address) const = 0;
++  FEX_DEFAULT_VISIBILITY virtual void SetCurrentBlockFromHostPC(FEXCore::Core::InternalThreadState* Thread, uintptr_t HostPC) = 0;
+ 
+   /**
+    * @brief Informs the context if hardware TSO is supported.
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+@@ -81,6 +81,7 @@
+     LogMan::Msg::AFmt("Thread {} has received a signal and hasn't registered itself with the delegate! Programming error!",
+                       FHU::Syscalls::gettid());
+   } else {
++    CTX->SetCurrentBlockFromHostPC(Thread->Thread, ArchHelpers::Context::GetPc(UContext));
+     SignalHandler& Handler = HostHandlers[Signal];
+     for (auto& HandlerFunc : Handler.Handlers) {
+       if (HandlerFunc(Thread->Thread, Signal, Info, UContext)) {

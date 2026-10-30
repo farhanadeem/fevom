@@ -1,0 +1,12 @@
+{
+  "method": "files.status",
+  "params": {},
+  "result": {
+    "share": false,
+    "events": false,
+    "watch": {
+      "seq": 0,
+      "paths": []
+    }
+  }
+}

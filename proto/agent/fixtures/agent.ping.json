@@ -1,0 +1,5 @@
+{
+  "method": "agent.ping",
+  "params": {},
+  "result": {}
+}

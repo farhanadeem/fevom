@@ -1,0 +1,3 @@
+PROTO  MAC                        GUEST            STATE   REACH     FOR                  NOTE
+tcp    127.0.0.1:8080,[::1]:8080  127.0.0.1:8080   active  this Mac  docker 3f2a9c1d7e10
+udp    127.0.0.1:5353,[::1]:5353  172.17.0.1:5353  active  this Mac  docker 3f2a9c1d7e10

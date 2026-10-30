@@ -1,0 +1,30 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 9,
+    "state": "running",
+    "engine": "ready",
+    "boot_id": "e81a08",
+    "since": "2026-10-16T14:10:00Z",
+    "pending_restart": [],
+    "network": {
+      "subnet": "198.19.0.0/16",
+      "direct_access": "off",
+      "reason": "no_helper"
+    },
+    "domains": {
+      "resolver": "absent",
+      "port": 15353,
+      "names": 1,
+      "local": [
+        {"name": "shop-custom.local", "container": "api", "state": "waiting"}
+      ]
+    },
+    "https": {
+      "enabled": true,
+      "trust": "absent",
+      "key": "none"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "method": "machine.start",
+  "params": {
+    "name": "sandbox",
+    "config": {
+      "user": "ada",
+      "mac": "02:42:c6:13:00:0c",
+      "address": "198.19.0.12",
+      "share": true,
+      "isolated": true,
+      "isolate_network": true,
+      "mounts": [
+        {"source": "/Users/ada/src/project"},
+        {"source": "/Users/ada/Downloads/data", "dest": "/data"}
+      ]
+    }
+  },
+  "result": {
+    "name": "sandbox",
+    "state": "running",
+    "image": {
+      "distro": "ubuntu",
+      "release": "resolute",
+      "arch": "arm64",
+      "variant": "default",
+      "serial": "20261014_07:42"
+    },
+    "uuid": "5d41402a-bc4b-4a76-9719-d911017c592a",
+    "init": "systemd",
+    "address": "198.19.0.12",
+    "pid": 4410,
+    "started_ms": 120331.5,
+    "ready_ms": 121104.9,
+    "disk_bytes": 536870912
+  }
+}

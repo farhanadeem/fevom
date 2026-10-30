@@ -1,0 +1,8 @@
+{
+  "method": "machines.delete",
+  "params": {
+    "name": "old",
+    "force": true
+  },
+  "result": {}
+}

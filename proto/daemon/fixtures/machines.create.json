@@ -1,0 +1,16 @@
+{
+  "method": "machines.create",
+  "params": {
+    "name": "dev",
+    "distro": "ubuntu",
+    "user_data": "#cloud-config\npackages: [git, make]\n"
+  },
+  "result": {
+    "id": "op-20261014T091155-1",
+    "method": "machines.create",
+    "target": "dev",
+    "state": "running",
+    "phase": "verify",
+    "started": "2026-10-14T09:11:55Z"
+  }
+}

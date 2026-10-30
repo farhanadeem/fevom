@@ -1,0 +1,5 @@
+{
+  "method": "port.bind",
+  "params": {"proto": "tcp", "family": 4, "port": 80},
+  "result": {"address": "127.0.0.1:80"}
+}

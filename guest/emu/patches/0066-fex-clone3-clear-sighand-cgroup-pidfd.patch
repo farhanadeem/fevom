@@ -1,0 +1,127 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp
+@@ -611,11 +611,9 @@
+   uint64_t flags = args->args.flags;
+ 
+   if (flags & CLONE_CLEAR_SIGHAND) {
+-    // CLONE_CLEAR_SIGHAND was added in kernel 5.5. FEX doesn't properly support this.
+-    // glibc started using this flag in 2.38 as an optimization for posix_spawn.
+-    // If clone returns EINVAL or ENOSYS then it will fallback to the non-optimized path.
+-    LogMan::Msg::IFmt("CLONE_CLEAR_SIGHAND passed to clone3. Returning EINVAL.");
+-    return -EINVAL;
++    if (flags & (CLONE_THREAD | CLONE_SIGHAND)) {
++      return -EINVAL;
++    }
+   }
+ 
+   auto HasUnhandledFlags = [](FEX::HLE::clone3_args* args) -> bool {
+@@ -624,7 +622,11 @@
+                                          CLONE_NEWCGROUP | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWNET |
+                                          CLONE_IO | CLONE_CLEAR_SIGHAND | CLONE_INTO_CGROUP;
+ 
+-    if ((args->args.flags & UNHANDLED_FLAGS) != 0) {
++    uint64_t Unhandled = args->args.flags & UNHANDLED_FLAGS;
++    if (!AnyFlagsSet(args->args.flags, CLONE_THREAD)) {
++      Unhandled &= ~(CLONE_CLEAR_SIGHAND | CLONE_INTO_CGROUP);
++    }
++    if (Unhandled != 0) {
+       // Basic unhandled flags
+       return true;
+     }
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
+@@ -43,6 +43,7 @@
+ #include <sys/wait.h>
+ #include <unistd.h>
+ #include <sys/fsuid.h>
++#include <cstring>
+ 
+ ARG_TO_STR(idtype_t, "%u")
+ 
+@@ -255,8 +256,45 @@
+   return Thread->StatusCode;
+ }
+ 
+-static int CloneFork(uint32_t flags, uint64_t exit_signal) {
++#ifndef CLONE_CLEAR_SIGHAND
++#define CLONE_CLEAR_SIGHAND 0x100000000ULL
++#endif
++#ifndef CLONE_INTO_CGROUP
++#define CLONE_INTO_CGROUP 0x200000000ULL
++#endif
++
++static int CloneFork(const FEX::HLE::clone3_args* args) {
++  const uint64_t flags = args->args.flags;
++  const uint64_t exit_signal = args->args.exit_signal;
++  if (args->Type == TypeOfClone::TYPE_CLONE3 && (flags & (CLONE_PIDFD | CLONE_INTO_CGROUP))) {
++    FEX::HLE::kernel_clone3_args Host {};
++    Host.flags = flags & (CLONE_FS | CLONE_FILES | CLONE_PIDFD | CLONE_INTO_CGROUP);
++    Host.pidfd = args->args.pidfd;
++    Host.exit_signal = exit_signal;
++    Host.cgroup = args->args.cgroup;
++    return ::syscall(SYSCALL_DEF(clone3), &Host, sizeof(Host));
++  }
++  if (flags & CLONE_PIDFD) {
++    return ::syscall(SYSCALL_DEF(clone), (flags & (CLONE_FS | CLONE_FILES | CLONE_PIDFD)) | exit_signal, nullptr,
++                     reinterpret_cast<pid_t*>(args->args.parent_tid), nullptr, nullptr);
++  }
+   return ::syscall(SYSCALL_DEF(clone), (flags & (CLONE_FS | CLONE_FILES)) | exit_signal, nullptr, nullptr, nullptr, nullptr);
++}
++
++static void ClearGuestSignalHandlers() {
++  auto Delegator = FEX::HLE::_SyscallHandler->GetSignalDelegator();
++  for (int Signal = 1; Signal <= 64; ++Signal) {
++    if (Signal == SIGKILL || Signal == SIGSTOP) {
++      continue;
++    }
++    FEX::HLE::GuestSigAction Old {};
++    Delegator->RegisterGuestSignalHandler(Signal, nullptr, &Old);
++    FEX::HLE::GuestSigAction New {};
++    New.sigaction_handler.handler = Old.sigaction_handler.handler == SIG_IGN ? SIG_IGN : SIG_DFL;
++    if (memcmp(&New, &Old, sizeof(New)) != 0) {
++      Delegator->RegisterGuestSignalHandler(Signal, &New, nullptr);
++    }
++  }
+ }
+ 
+ static int VForkChildFD = -1;
+@@ -272,7 +310,7 @@
+ 
+   // Sanity check flags here.
+   if (args->Type == TypeOfClone::TYPE_CLONE3) {
+-    constexpr uint64_t UnsupportedFlags = CLONE_CLEAR_SIGHAND | CLONE_INTO_CGROUP | CLONE_NEWTIME;
++    constexpr uint64_t UnsupportedFlags = CLONE_NEWTIME;
+     if (args->args.flags & UnsupportedFlags) {
+       LogMan::Msg::EFmt("fork: Unsupported flags passed. {:#x}", args->args.flags & UnsupportedFlags);
+     }
+@@ -295,7 +333,7 @@
+ 
+     // XXX: We don't currently support a real `vfork` as it causes problems.
+     // Currently behaves like a fork (with wait after the fact), which isn't correct. Need to find where the problem is
+-    Result = CloneFork(flags, exit_signal);
++    Result = CloneFork(args);
+ 
+     if (Result == 0) {
+       // Close the read end of the pipe.
+@@ -306,7 +344,7 @@
+       close(VForkFDs[1]);
+     }
+   } else {
+-    Result = CloneFork(flags, exit_signal);
++    Result = CloneFork(args);
+   }
+   const bool IsChild = Result == 0;
+ 
+@@ -320,6 +358,10 @@
+     // Unlock the mutexes on both sides of the fork
+     FEX::HLE::_SyscallHandler->UnlockAfterFork(Frame->Thread, IsChild);
+ 
++    if (flags & CLONE_CLEAR_SIGHAND) {
++      ClearGuestSignalHandlers();
++    }
++
+     ::syscall(SYS_rt_sigprocmask, SIG_SETMASK, &Mask, nullptr, sizeof(Mask));
+ 
+     // Child

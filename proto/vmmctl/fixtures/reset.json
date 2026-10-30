@@ -1,0 +1,8 @@
+{
+  "method": "reset",
+  "notification": true,
+  "params": {
+    "count": 1,
+    "at_ns": 2012860000000000
+  }
+}

@@ -1,0 +1,5 @@
+state: running
+engine: ready
+since: 2026-10-18T09:12:30.2Z
+boot: a3f9c2
+x86 emulation: off: x86 programs fail with "exec format error"; emulation.x86's new value takes effect when the engine next starts ("fev restart docker")

@@ -1,0 +1,11 @@
+{
+  "method": "debug.status",
+  "params": {},
+  "result": {
+    "exists": false,
+    "bytes": 0,
+    "paths": 0,
+    "default_whole": false,
+    "sessions": 0
+  }
+}

@@ -1,0 +1,26 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls.cpp
+@@ -259,12 +259,7 @@
+     InterpreterType = ELFLoader::ELFContainer::GetELFType(ShebangInterpreter);
+   }
+ 
+-  if (!IsShebang && Type == ELFLoader::ELFContainer::ELFType::TYPE_NONE) {
+-    // If our interpeter doesn't support this file format AND ELF format is NONE then ENOEXEC
+-    // binfmt_misc could end up handling this case but we can't know that without parsing binfmt_misc ourselves
+-    // Return -ENOEXEC until proven otherwise
+-    return -ENOEXEC;
+-  }
++  const bool IsUnknownFormat = !IsShebang && Type == ELFLoader::ELFContainer::ELFType::TYPE_NONE;
+ 
+   fextl::vector<const char*> EnvpArgs {};
+   char* const* EnvpPtr = envp;
+@@ -325,7 +320,7 @@
+   // We are trying to execute an ELF of a different architecture
+   // We can't know if we can support this without architecture specific checks and binfmt_misc parsing
+   // Just execve it and let the kernel handle the process
+-  const bool IsOtherELF = Type == ELFLoader::ELFContainer::ELFType::TYPE_OTHER_ELF;
++  const bool IsOtherELF = Type == ELFLoader::ELFContainer::ELFType::TYPE_OTHER_ELF || IsUnknownFormat;
+ 
+   // Need to copy over envp variables if we are appending data.
+   // Only situation in which an envp copy needs to occur is if we are doing an FD execveat and binfmt_misc can't handle it.

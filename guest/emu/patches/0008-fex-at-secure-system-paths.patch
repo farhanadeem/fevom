@@ -1,0 +1,49 @@
+diff --git a/Source/Common/Config.cpp b/Source/Common/Config.cpp
+--- a/Source/Common/Config.cpp
++++ b/Source/Common/Config.cpp
+@@ -747,6 +747,20 @@
+ }
+ 
+ void InitializeConfigs(const PortableInformation& PortableInfo) {
++#ifndef _WIN32
++  if (getauxval(AT_SECURE)) {
++    const auto Data = GetDataDirectory(true, PortableInfo);
++    const auto Conf = GetConfigDirectory(true, PortableInfo);
++    const auto File = GetConfigFileLocation(true, PortableInfo);
++    for (bool Global : {false, true}) {
++      FEXCore::Config::SetDataDirectory(Data, Global);
++      FEXCore::Config::SetConfigDirectory(Conf, Global);
++      FEXCore::Config::SetConfigFileLocation(File, Global);
++    }
++    FEXCore::Config::SetCacheDirectory(Data + "cache-secure/");
++    return;
++  }
++#endif
+   FEXCore::Config::SetDataDirectory(GetDataDirectory(false, PortableInfo), false);
+   FEXCore::Config::SetDataDirectory(GetDataDirectory(true, PortableInfo), true);
+   FEXCore::Config::SetConfigDirectory(GetConfigDirectory(false, PortableInfo), false);
+diff --git a/Source/Tools/CommonTools/PortabilityInfo.h b/Source/Tools/CommonTools/PortabilityInfo.h
+--- a/Source/Tools/CommonTools/PortabilityInfo.h
++++ b/Source/Tools/CommonTools/PortabilityInfo.h
+@@ -1,6 +1,9 @@
+ // SPDX-License-Identifier: MIT
+ #pragma once
+ #include <limits.h>
++#ifndef _WIN32
++#include <sys/auxv.h>
++#endif
+ 
+ #include "Common/Config.h"
+ 
+@@ -19,6 +22,11 @@
+ }
+ 
+ static inline FEX::Config::PortableInformation ReadPortabilityInformation() {
++#ifndef _WIN32
++  if (getauxval(AT_SECURE)) {
++    return {false, {}};
++  }
++#endif
+   const char* PortableConfig = getenv("FEX_PORTABLE");
+   if (!PortableConfig) {
+     return {false, {}};

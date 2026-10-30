@@ -1,0 +1,14 @@
+hello version=1 build="v0.3.0"
+watching seq=1 paths=1
+  ok
+events records=1
+  change flags=0 mask=modify|close_write|open parent=12 child=57 parent2=0 victim=0 name="main.go" name2=""
+watching seq=2 paths=2
+  ok
+  missing
+events records=1
+  inval_all flags=0 mask=0 parent=0 child=0 parent2=0 victim=0 name="" name2=""
+events records=2
+  create flags=0 mask=0 parent=12 child=0 parent2=0 victim=0 name="a" name2=""
+  delete flags=last_link mask=0 parent=12 child=70 parent2=0 victim=0 name="b" name2=""
+watching seq=3 paths=0

@@ -1,0 +1,15 @@
+diff --git a/fs/nfsd/nfs4state.c b/fs/nfsd/nfs4state.c
+--- a/fs/nfsd/nfs4state.c
++++ b/fs/nfsd/nfs4state.c
+@@ -8233,8 +8233,10 @@
+ 
+ 	need_move_to_close_list = nfsd4_close_open_stateid(stp);
+ 	mutex_unlock(&stp->st_mutex);
+-	if (need_move_to_close_list)
++	if (need_move_to_close_list) {
++		drop_stid_export(stp->st_stid.sc_client, &stp->st_stid);
+ 		move_to_close_lru(stp, net);
++	}
+ 
+ 	/* v4.1+ suggests that we send a special stateid in here, since the
+ 	 * clients should just ignore this anyway. Since this is not useful

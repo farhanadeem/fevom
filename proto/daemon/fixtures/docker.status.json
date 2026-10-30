@@ -1,0 +1,18 @@
+{
+  "method": "docker.status",
+  "params": {},
+  "result": {
+    "engine": "ready",
+    "socket": "/Users/someone/.fev/run/docker.sock",
+    "context": {
+      "name": "fev",
+      "exists": true,
+      "selected": false,
+      "current": "default"
+    },
+    "compat_socket": "elsewhere",
+    "compat_target": "/Users/someone/.other/run/docker.sock",
+    "config_file": "/Users/someone/.fev/config/docker.json",
+    "config_state": "applied"
+  }
+}

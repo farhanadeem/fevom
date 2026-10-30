@@ -1,0 +1,33 @@
+diff --git a/fs/nfsd/nfs4state.c b/fs/nfsd/nfs4state.c
+--- a/fs/nfsd/nfs4state.c
++++ b/fs/nfsd/nfs4state.c
+@@ -160,6 +160,11 @@
+ 	return clp->cl_time == 0;
+ }
+ 
++static time64_t nfsd4_client_time(void)
++{
++	return max_t(time64_t, ktime_get_boottime_seconds(), 1);
++}
++
+ static void nfsd4_dec_courtesy_client_count(struct nfsd_net *nn,
+ 					struct nfs4_client *clp)
+ {
+@@ -197,7 +202,7 @@
+ 	}
+ 
+ 	list_move_tail(&clp->cl_lru, &nn->client_lru);
+-	clp->cl_time = ktime_get_boottime_seconds();
++	clp->cl_time = nfsd4_client_time();
+ 	nfsd4_dec_courtesy_client_count(nn, clp);
+ 	clp->cl_state = NFSD4_ACTIVE;
+ }
+@@ -3575,7 +3580,7 @@
+ 	gen_clid(clp, nn);
+ 	kref_init(&clp->cl_nfsdfs.cl_ref);
+ 	nfsd4_init_cb(&clp->cl_cb_null, clp, NULL, NFSPROC4_CLNT_CB_NULL);
+-	clp->cl_time = ktime_get_boottime_seconds();
++	clp->cl_time = nfsd4_client_time();
+ 	copy_verf(clp, verf);
+ 	memcpy(&clp->cl_addr, sa, sizeof(struct sockaddr_storage));
+ 	RCU_INIT_POINTER(clp->cl_cb_session, NULL);

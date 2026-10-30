@@ -1,0 +1,28 @@
+{
+  "method": "config.list",
+  "params": {},
+  "result": {
+    "values": {
+      "cpu": {
+        "value": 10,
+        "is_default": true
+      },
+      "memory_mib": {
+        "value": 4096,
+        "pending": true
+      },
+      "docker.set_context": {
+        "value": true,
+        "is_default": true
+      },
+      "data_allow_backup": {
+        "value": false,
+        "is_default": true
+      },
+      "network.publish_lan": {
+        "value": true,
+        "is_default": true
+      }
+    }
+  }
+}

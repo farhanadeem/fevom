@@ -1,0 +1,486 @@
+diff --git a/fs/fuse/dir.c b/fs/fuse/dir.c
+--- a/fs/fuse/dir.c
++++ b/fs/fuse/dir.c
+@@ -921,6 +921,9 @@
+ 	ff->fh = outopenp->fh;
+ 	ff->nodeid = outentry.nodeid;
+ 	ff->open_flags = outopenp->open_flags;
++	if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) && fm->fc->fev_requests &&
++	    !(outentry.attr.flags & FUSE_ATTR_NO_SEC))
++		file->f_mode &= ~FMODE_CREATED;
+ 	inode = fuse_iget(dir->i_sb, outentry.nodeid, outentry.generation,
+ 			  &outentry.attr, ATTR_TIMEOUT(&outentry), 0, 0);
+ 	if (!inode) {
+@@ -931,7 +934,10 @@
+ 		goto out_err;
+ 	}
+ 	kfree(forget);
+-	d_instantiate(entry, inode);
++	if (d_in_lookup(entry))
++		WARN_ON_ONCE(d_splice_alias(inode, entry));
++	else
++		d_instantiate(entry, inode);
+ 	fuse_dentry_set_epoch(entry, epoch);
+ 	fuse_change_entry_timeout(entry, &outentry);
+ 	fuse_dir_changed(dir);
+@@ -973,7 +979,18 @@
+ 		return -EIO;
+ 
+ 	if (d_in_lookup(entry)) {
+-		struct dentry *res = fuse_lookup(dir, entry, 0);
++		struct dentry *res;
++
++		if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) && fc->fev_requests &&
++		    (flags & O_CREAT) && !fc->no_create) {
++			file->f_mode |= FMODE_CREATED;
++			err = fuse_create_open(idmap, dir, entry, file, flags,
++					       mode, FUSE_CREATE);
++			if (!err || !d_in_lookup(entry))
++				return err;
++			file->f_mode &= ~FMODE_CREATED;
++		}
++		res = fuse_lookup(dir, entry, 0);
+ 		if (res || d_really_is_positive(entry))
+ 			return finish_no_open(file, res);
+ 	}
+@@ -1230,6 +1247,8 @@
+ 	int err;
+ 	struct fuse_mount *fm = get_fuse_mount(dir);
+ 	FUSE_ARGS(args);
++	u64 pin;
++	bool pinned;
+ 
+ 	if (fuse_is_bad(dir))
+ 		return -EIO;
+@@ -1240,7 +1259,10 @@
+ 	fuse_set_zero_arg0(&args);
+ 	args.in_args[1].size = entry->d_name.len + 1;
+ 	args.in_args[1].value = entry->d_name.name;
++	pinned = fuse_fev_pin(d_inode(entry), &pin);
+ 	err = fuse_simple_request(fm, &args);
++	if (pinned)
++		fuse_fev_unpin(d_inode(entry), pin);
+ 	if (!err) {
+ 		fuse_dir_changed(dir);
+ 		fuse_entry_unlinked(entry);
+@@ -1281,6 +1303,8 @@
+ 	struct fuse_rename2_in inarg;
+ 	struct fuse_mount *fm = get_fuse_mount(olddir);
+ 	FUSE_ARGS(args);
++	u64 pin;
++	bool pinned;
+ 
+ 	memset(&inarg, 0, argsize);
+ 	inarg.newdir = get_node_id(newdir);
+@@ -1294,7 +1318,11 @@
+ 	args.in_args[1].value = oldent->d_name.name;
+ 	args.in_args[2].size = newent->d_name.len + 1;
+ 	args.in_args[2].value = newent->d_name.name;
++	pinned = !(flags & RENAME_EXCHANGE) &&
++		 fuse_fev_pin(d_inode(newent), &pin);
+ 	err = fuse_simple_idmap_request(idmap, fm, &args);
++	if (pinned)
++		fuse_fev_unpin(d_inode(newent), pin);
+ 	if (!err) {
+ 		/* ctime changes */
+ 		fuse_update_ctime(d_inode(oldent));
+diff --git a/fs/fuse/file.c b/fs/fuse/file.c
+--- a/fs/fuse/file.c
++++ b/fs/fuse/file.c
+@@ -109,7 +109,8 @@
+ 
+ 		if (!args) {
+ 			/* Do nothing when server does not implement 'opendir' */
+-		} else if (args->opcode == FUSE_RELEASE && ff->fm->fc->no_open) {
++		} else if (args->opcode == FUSE_RELEASE &&
++			   (ff->fm->fc->no_open || ff->fev_free)) {
+ 			fuse_release_end(args, 0);
+ 		} else if (sync) {
+ 			fuse_simple_request(ff->fm, args);
+@@ -139,12 +140,20 @@
+ 	int opcode = isdir ? FUSE_OPENDIR : FUSE_OPEN;
+ 	bool open = isdir ? !fc->no_opendir : !fc->no_open;
+ 	bool release = !isdir || open;
++	bool fev_free = false;
+ 	struct fuse_inode *bfi = NULL;
+ 
+ 	if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) && binode) {
+ 		bfi = get_fuse_inode(binode);
+ 		if (isdir && test_bit(FUSE_I_OPEN_FREE, &bfi->state))
+ 			open = release = false;
++		else if (!isdir && S_ISREG(binode->i_mode) &&
++			 test_bit(FUSE_I_OPEN_FREE, &bfi->state) &&
++			 (open_flags & O_ACCMODE) == O_RDONLY &&
++			 !(open_flags & O_TRUNC)) {
++			open = false;
++			fev_free = true;
++		}
+ 	}
+ 
+ 	/*
+@@ -160,6 +169,10 @@
+ 		return ERR_PTR(-ENOMEM);
+ 
+ 	ff->fh = 0;
++	if (fev_free) {
++		ff->fev_free = true;
++		atomic_inc(&bfi->fev_free);
++	}
+ 	/* Default for no-open */
+ 	ff->open_flags = FOPEN_KEEP_CACHE | (isdir ? FOPEN_CACHE_DIR : 0);
+ 	if (bfi && !open && test_bit(FUSE_I_NO_KEEP_CACHE, &bfi->state))
+@@ -271,6 +284,50 @@
+ 	spin_unlock(&fi->lock);
+ 	file_update_time(file);
+ 	fuse_invalidate_attr_mask(inode, FUSE_STATX_MODSIZE);
++}
++
++static int fuse_do_readfolio(struct file *file, struct folio *folio,
++			     size_t off, size_t len);
++
++static int fuse_fev_open_read(struct inode *inode, struct file *file)
++{
++	struct folio *folio = filemap_grab_folio(inode->i_mapping, 0);
++	int err;
++
++	if (IS_ERR(folio))
++		return PTR_ERR(folio);
++	if (!folio_test_uptodate(folio)) {
++		err = fuse_do_readfolio(file, folio, 0, folio_size(folio));
++		if (!err)
++			folio_mark_uptodate(folio);
++	} else {
++		struct fuse_file *ff = file->private_data;
++		struct fuse_read_in inarg = {
++			.fh = ff->fh,
++			.flags = file->f_flags,
++		};
++		u32 none;
++		FUSE_ARGS(args);
++
++		args.opcode = FUSE_READ;
++		args.nodeid = ff->nodeid;
++		args.in_numargs = 1;
++		args.in_args[0].size = sizeof(inarg);
++		args.in_args[0].value = &inarg;
++		args.out_argvar = true;
++		args.out_numargs = 1;
++		args.out_args[0].size = sizeof(none);
++		args.out_args[0].value = &none;
++		err = fuse_simple_request(get_fuse_mount(inode), &args);
++		if (err > 0)
++			err = 0;
++		if (err < 0 && S_ISREG(inode->i_mode))
++			clear_bit(FUSE_I_OPEN_FREE,
++				  &get_fuse_inode(inode)->state);
++	}
++	folio_unlock(folio);
++	folio_put(folio);
++	return err;
+ }
+ 
+ static int fuse_open(struct inode *inode, struct file *file)
+@@ -280,6 +337,7 @@
+ 	struct fuse_conn *fc = fm->fc;
+ 	struct fuse_file *ff;
+ 	int err;
++	bool fev_asked = false;
+ 	bool is_truncate = (file->f_flags & O_TRUNC) && fc->atomic_o_trunc;
+ 	bool is_wb_truncate = is_truncate && fc->writeback_cache;
+ 	bool dax_truncate = is_truncate && FUSE_IS_DAX(inode);
+@@ -304,6 +362,7 @@
+ 	if (is_wb_truncate || dax_truncate)
+ 		fuse_set_nowrite(inode);
+ 
++fev_again:
+ 	err = fuse_do_open(fm, get_node_id(inode), file, false);
+ 	if (!err) {
+ 		ff = file->private_data;
+@@ -322,6 +381,17 @@
+ 		else if (!(ff->open_flags & FOPEN_KEEP_CACHE))
+ 			invalidate_inode_pages2(inode->i_mapping);
+ 	}
++	if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) && !err && ff->fev_free) {
++		err = fuse_fev_open_read(inode, file);
++		if (err) {
++			fuse_sync_release(fi, ff, file->f_flags);
++			file->private_data = NULL;
++			if (err != -ESTALE && !fev_asked) {
++				fev_asked = true;
++				goto fev_again;
++			}
++		}
++	}
+ out_unlock:
+ 	if (dax_truncate)
+ 		filemap_invalidate_unlock(inode->i_mapping);
+@@ -345,6 +415,8 @@
+ 		spin_lock(&fi->lock);
+ 		list_del(&ff->write_entry);
+ 		spin_unlock(&fi->lock);
++		if (ff->fev_free)
++			atomic_dec(&fi->fev_free);
+ 	}
+ 	spin_lock(&fc->lock);
+ 	if (!RB_EMPTY_NODE(&ff->polled_node))
+@@ -437,6 +509,36 @@
+ 	return 0;
+ }
+ 
++bool fuse_fev_pin(struct inode *inode, u64 *fh)
++{
++	struct fuse_open_out out;
++
++	if (!IS_ENABLED(CONFIG_FUSE_FEV_CACHE) || !inode ||
++	    !S_ISREG(inode->i_mode) ||
++	    !atomic_read(&get_fuse_inode(inode)->fev_free))
++		return false;
++	if (fuse_send_open(get_fuse_mount(inode), get_node_id(inode), O_RDONLY,
++			   FUSE_OPEN, &out))
++		return false;
++	*fh = out.fh;
++	return true;
++}
++
++void fuse_fev_unpin(struct inode *inode, u64 fh)
++{
++	struct fuse_release_in inarg = { .fh = fh, .flags = O_RDONLY };
++	FUSE_ARGS(args);
++
++	args.opcode = FUSE_RELEASE;
++	args.nodeid = get_node_id(inode);
++	args.in_numargs = 1;
++	args.in_args[0].size = sizeof(inarg);
++	args.in_args[0].value = &inarg;
++	args.force = true;
++	args.nocreds = true;
++	fuse_simple_request(get_fuse_mount(inode), &args);
++}
++
+ void fuse_sync_release(struct fuse_inode *fi, struct fuse_file *ff,
+ 		       unsigned int flags)
+ {
+@@ -867,6 +969,12 @@
+ 	}
+ }
+ 
++static void fuse_fev_read_failed(struct inode *inode)
++{
++	if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) && S_ISREG(inode->i_mode))
++		clear_bit(FUSE_I_OPEN_FREE, &get_fuse_inode(inode)->state);
++}
++
+ static int fuse_do_readfolio(struct file *file, struct folio *folio,
+ 			     size_t off, size_t len)
+ {
+@@ -895,8 +1003,10 @@
+ 
+ 	fuse_read_args_fill(&ia, file, pos, desc.length, FUSE_READ);
+ 	res = fuse_simple_request(fm, &ia.ap.args);
+-	if (res < 0)
++	if (res < 0) {
++		fuse_fev_read_failed(inode);
+ 		return res;
++	}
+ 	/*
+ 	 * Short read means EOF.  If file size is larger, truncate it
+ 	 */
+@@ -1063,6 +1173,8 @@
+ 	 */
+ 	if (!err && num_read < count)
+ 		fuse_short_read(inode, ia->read.attr_ver, num_read, ap);
++	if (err)
++		fuse_fev_read_failed(inode);
+ 
+ 	fuse_invalidate_atime(inode);
+ 
+diff --git a/fs/fuse/fuse_i.h b/fs/fuse/fuse_i.h
+--- a/fs/fuse/fuse_i.h
++++ b/fs/fuse/fuse_i.h
+@@ -209,6 +209,8 @@
+ 	/** @state: Miscellaneous bits describing inode state */
+ 	unsigned long state;
+ 
++	atomic_t fev_free;
++
+ 	/**
+ 	 * @mutex: Lock for serializing lookup and readdir for back
+ 	 * compatibility
+@@ -303,7 +305,11 @@
+ 
+ 		/** @version: Version of cache we are reading */
+ 		u64 version;
++
++		loff_t fev_end;
+ 
++		bool fev_ended;
++
+ 	} readdir;
+ 
+ 	/** @polled_node: RB node to be linked on fuse_conn->polled_files */
+@@ -324,6 +330,8 @@
+ 
+ 	/** @flock: Has flock been performed on this file? */
+ 	bool flock:1;
++
++	bool fev_free:1;
+ };
+ 
+ struct fuse_release_args {
+@@ -716,6 +724,8 @@
+ 	unsigned int fev_cache:1;
+ 
+ 	unsigned int no_ioctl:1;
++
++	unsigned int fev_requests:1;
+ 
+ 	atomic_t fev_events;
+ 
+@@ -1261,6 +1271,9 @@
+ /* file.c */
+ struct fuse_file *fuse_file_open(struct fuse_mount *fm, u64 nodeid,
+ 				 unsigned int open_flags, bool isdir);
++bool fuse_fev_pin(struct inode *inode, u64 *fh);
++void fuse_fev_unpin(struct inode *inode, u64 fh);
++
+ void fuse_file_release(struct inode *inode, struct fuse_file *ff,
+ 		       unsigned int open_flags, fl_owner_t id, bool isdir);
+ 
+diff --git a/fs/fuse/inode.c b/fs/fuse/inode.c
+--- a/fs/fuse/inode.c
++++ b/fs/fuse/inode.c
+@@ -261,6 +261,13 @@
+ 			set_bit(FUSE_I_NO_KEEP_CACHE, &fi->state);
+ 		else
+ 			clear_bit(FUSE_I_NO_KEEP_CACHE, &fi->state);
++		if (S_ISREG(attr->mode)) {
++			if (fc->fev_requests &&
++			    (attr->flags & FUSE_ATTR_OPEN_FREE))
++				set_bit(FUSE_I_OPEN_FREE, &fi->state);
++			else
++				clear_bit(FUSE_I_OPEN_FREE, &fi->state);
++		}
+ 	}
+ 
+ 	/* Sanitize nsecs */
+@@ -1439,6 +1446,11 @@
+ 			    (flags & FUSE_FEV_CACHE) &&
+ 			    fc->user_ns == &init_user_ns)
+ 				fc->fev_cache = 1;
++			if (fc->fev_cache && (flags & FUSE_FEV_REQUESTS)) {
++				fc->fev_requests = 1;
++				bdi_set_strict_limit(fm->sb->s_bdi, 0);
++				bdi_set_max_ratio(fm->sb->s_bdi, 100);
++			}
+ 		} else {
+ 			ra_pages = fc->max_read / PAGE_SIZE;
+ 			fc->no_lock = 1;
+@@ -1512,7 +1524,7 @@
+ 		flags |= FUSE_OVER_IO_URING;
+ 	if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) &&
+ 	    fm->fc->user_ns == &init_user_ns)
+-		flags |= FUSE_FEV_CACHE;
++		flags |= FUSE_FEV_CACHE | FUSE_FEV_REQUESTS;
+ 
+ 	ia->in.flags = flags;
+ 	ia->in.flags2 = flags >> 32;
+diff --git a/fs/fuse/readdir.c b/fs/fuse/readdir.c
+--- a/fs/fuse/readdir.c
++++ b/fs/fuse/readdir.c
+@@ -288,7 +288,7 @@
+ 
+ static int parse_dirplusfile(char *buf, size_t nbytes, struct file *file,
+ 			     struct dir_context *ctx, u64 attr_version,
+-			     u64 evict_ctr, int epoch)
++			     u64 evict_ctr, int epoch, bool *whole)
+ {
+ 	struct fuse_direntplus *direntplus;
+ 	struct fuse_dirent *dirent;
+@@ -296,6 +296,8 @@
+ 	int over = 0;
+ 	int ret;
+ 
++	*whole = false;
++
+ 	while (nbytes >= FUSE_NAME_OFFSET_DIRENTPLUS) {
+ 		direntplus = (struct fuse_direntplus *) buf;
+ 		dirent = &direntplus->dirent;
+@@ -329,6 +331,7 @@
+ 			fuse_force_forget(file, direntplus->entry_out.nodeid);
+ 	}
+ 
++	*whole = !over && !nbytes;
+ 	return 0;
+ }
+ 
+@@ -383,8 +386,20 @@
+ 	u64 attr_version = 0, evict_ctr = 0;
+ 	int epoch = atomic_read(&fm->fc->epoch);
+ 	bool locked;
+-	struct page **pages = fuse_readdir_alloc_buf(ap, &bufsize);
++	struct fuse_file *bff = file->private_data;
++	size_t replied;
++	bool whole;
++	struct page **pages;
++
++	if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) && bff->readdir.fev_ended &&
++	    bff->readdir.fev_end == ctx->pos) {
++		if (bff->open_flags & FOPEN_CACHE_DIR)
++			fuse_readdir_cache_end(file, ctx->pos);
++		return 0;
++	}
++	bff->readdir.fev_ended = false;
+ 
++	pages = fuse_readdir_alloc_buf(ap, &bufsize);
+ 	if (!pages)
+ 		return -ENOMEM;
+ 
+@@ -414,15 +429,25 @@
+ 		goto out;
+ 	}
+ 
++	replied = res;
+ 	buf = vm_map_ram(pages, ap->num_folios, -1);
+ 	if (!buf) {
+ 		res = -ENOMEM;
+ 	} else {
+-		if (plus)
++		if (plus) {
+ 			res = parse_dirplusfile(buf, res, file, ctx,
+-						attr_version, evict_ctr, epoch);
+-		else
++						attr_version, evict_ctr, epoch,
++						&whole);
++			if (IS_ENABLED(CONFIG_FUSE_FEV_CACHE) &&
++			    fc->fev_requests && !res && whole &&
++			    replied + FUSE_DIRENT_ALIGN(FUSE_NAME_OFFSET_DIRENTPLUS +
++							FUSE_FEV_NAME_MAX) <= bufsize) {
++				bff->readdir.fev_end = ctx->pos;
++				bff->readdir.fev_ended = true;
++			}
++		} else {
+ 			res = parse_dirfile(buf, res, file, ctx);
++		}
+ 
+ 		vm_unmap_ram(buf, ap->num_folios);
+ 	}
+diff --git a/include/uapi/linux/fuse.h b/include/uapi/linux/fuse.h
+--- a/include/uapi/linux/fuse.h
++++ b/include/uapi/linux/fuse.h
+@@ -497,6 +497,8 @@
+ #define FUSE_OVER_IO_URING	(1ULL << 41)
+ #define FUSE_REQUEST_TIMEOUT	(1ULL << 42)
+ #define FUSE_FEV_CACHE	(1ULL << 63)
++#define FUSE_FEV_REQUESTS	(1ULL << 62)
++#define FUSE_FEV_NAME_MAX	255
+ 
+ /**
+  * CUSE INIT request/reply flags
+@@ -587,6 +589,7 @@
+ #define FUSE_ATTR_CALLER_OWNER	(1U << 31)
+ #define FUSE_ATTR_NO_KEEP_CACHE	(1U << 29)
+ #define FUSE_ATTR_NO_SEC	(1U << 28)
++#define FUSE_ATTR_OPEN_FREE	(1U << 27)
+ 
+ /**
+  * Open flags

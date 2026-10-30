@@ -1,0 +1,5 @@
+state: running
+engine: ready
+since: 2026-10-16T14:02:11.203114Z
+boot: e81a07
+data: 6.0 GiB used, 106.0 GiB more can be written (the Mac's free space less what fev keeps free; df in a container shows it)

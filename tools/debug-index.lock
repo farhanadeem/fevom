@@ -1,0 +1,11 @@
+channel	release=nixos-26.11pre1097682.02c087f3fe67	nixindex=2026-10-18-072618
+
+input	name=packages.json.br	url=https://releases.nixos.org/nixos/unstable/nixos-26.11pre1097682.02c087f3fe67/packages.json.br	size=10333478	sha256=3a84d8d69492512818f22810a12d9d47fbbac0c0c9d344926cf140dda62fef40
+
+input	name=store-paths.xz	url=https://releases.nixos.org/nixos/unstable/nixos-26.11pre1097682.02c087f3fe67/store-paths.xz	size=5722052	sha256=11543c697f7da55c6ca6cd3b59950b0cd74362a507bd93d321600038559c5d53
+
+input	name=index-aarch64-linux	url=https://github.com/nix-community/nix-index-database/releases/download/2026-10-18-072618/index-aarch64-linux	size=98137283	sha256=1583ba4fca2f1b3089694352cb28e2436b37dd5ec659de16bb1d5876a0c3788d
+input	name=index-x86_64-linux	url=https://github.com/nix-community/nix-index-database/releases/download/2026-10-18-072618/index-x86_64-linux	size=108710949	sha256=3d099782a0b20bc1f80bb05dcc513981cc2acb4de90b1c84c42fa9522ed7a6a3
+
+output	arch=aarch64	table_sha256=84d9cb4a402adc54b17cd239c0d19e545cb6c19348b6eea0cf5ec3e0c860d0b1	zst=guest/debug/store/index-aarch64-linux.tsv.zst
+output	arch=x86_64	table_sha256=444ba54915c1ee5408151d30112157ecd4f386dad0f3d3c258ffd170266b4252	zst=guest/debug/store/index-x86_64-linux.tsv.zst

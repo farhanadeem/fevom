@@ -1,0 +1,7 @@
+{
+  "method": "storage.sync",
+  "params": {},
+  "result": {
+    "duration_ms": 18.5
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "method": "session.resize",
+  "params": {
+    "id": 9,
+    "rows": 60,
+    "cols": 200
+  },
+  "result": {}
+}

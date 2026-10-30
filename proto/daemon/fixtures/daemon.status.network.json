@@ -1,0 +1,50 @@
+{
+  "method": "daemon.status",
+  "params": {},
+  "result": {
+    "seq": 41,
+    "state": "running",
+    "engine": "ready",
+    "boot_id": "e81a07",
+    "since": "2026-10-16T14:02:11Z",
+    "pending_restart": [],
+    "warnings": [
+      "a route of this Mac's (198.19.64.0/24 on utun4) takes 198.19.64.0/18 off direct access"
+    ],
+    "network": {
+      "subnet": "198.19.0.0/16",
+      "subnet6": "fd5b:6e2a:91c0::/48",
+      "direct_access": "degraded",
+      "interface": "utun9",
+      "routes": ["198.19.0.0/24", "198.19.2.0/24", "198.19.4.0/22", "198.19.128.0/18"],
+      "conflicts": [
+        {"prefix": "198.19.64.0/18", "route": "198.19.64.0/24", "interface": "utun4", "withdrawn": true}
+      ],
+      "helper": {"protocol_version": 1, "security_level": 1, "build": "v0.7.0-12-g8a210f3"}
+    },
+    "domains": {
+      "resolver": "fevs",
+      "port": 15353,
+      "names": 3,
+      "local": [
+        {"name": "nas.local", "container": "files", "state": "refused", "reason": "answered by mDNS on en0", "answered_by": "172.16.30.20"},
+        {"name": "shop-custom.local", "container": "api", "state": "present"}
+      ]
+    },
+    "https": {
+      "enabled": true,
+      "trust": "trusted",
+      "root": "9f2c4a7e1b3d5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d8e",
+      "key": "signer"
+    },
+    "data": {
+      "budget": {
+        "referenced_bytes": 6442450944,
+        "budget_bytes": 113816633344,
+        "limit_bytes": 120259084288,
+        "limited": true,
+        "at": "2026-10-16T14:02:13Z"
+      }
+    }
+  }
+}

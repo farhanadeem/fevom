@@ -1,0 +1,118 @@
+{
+  "method": "k8s.watch",
+  "params": {
+    "namespace": "default"
+  },
+  "result": {
+    "subscription": 7,
+    "objects": [
+      {
+        "kind": "Namespace",
+        "name": "default",
+        "uid": "1a2b3c4d-0000-4000-8000-000000000001",
+        "created": "2026-10-23T21:00:10Z",
+        "resource_version": "12",
+        "phase": "Active"
+      },
+      {
+        "kind": "Deployment",
+        "namespace": "default",
+        "name": "web",
+        "uid": "5b1d3c2e-8f4a-4e1b-9c7d-2a6f0e3b1c55",
+        "created": "2026-10-23T21:01:00Z",
+        "resource_version": "1204",
+        "labels": {
+          "app": "web"
+        },
+        "workload": {
+          "wanted": 2,
+          "ready": 2,
+          "updated": 2,
+          "available": 2,
+          "images": [
+            "web:dev"
+          ]
+        }
+      },
+      {
+        "kind": "Pod",
+        "namespace": "default",
+        "name": "web-7c9d8b6f5-x2kqz",
+        "uid": "9e2a7b1c-3d4f-4a5b-8c6d-7e8f9a0b1c2d",
+        "created": "2026-10-23T21:01:01Z",
+        "resource_version": "1199",
+        "labels": {
+          "app": "web",
+          "pod-template-hash": "7c9d8b6f5"
+        },
+        "pod": {
+          "phase": "Running",
+          "ready": true,
+          "restarts": 0,
+          "node": "fev",
+          "ip": "198.19.16.8",
+          "containers": [
+            {
+              "name": "web",
+              "image": "web:dev",
+              "ready": true,
+              "restarts": 0,
+              "state": "running"
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Service",
+        "namespace": "default",
+        "name": "web",
+        "uid": "7f6e5d4c-3b2a-4190-8a7b-6c5d4e3f2a1b",
+        "created": "2026-10-23T21:01:00Z",
+        "resource_version": "1180",
+        "service": {
+          "namespace": "default",
+          "name": "web",
+          "type": "LoadBalancer",
+          "cluster_ip": "198.19.32.141",
+          "load_balancer": "198.19.8.1",
+          "ports": [
+            {
+              "name": "http",
+              "protocol": "TCP",
+              "port": 80,
+              "node_port": 30080
+            }
+          ],
+          "names": [
+            "web.default.k8s.fev.local",
+            "web.k8s.fev.local"
+          ],
+          "urls": [
+            "https://web.k8s.fev.local",
+            "http://localhost:30080",
+            "http://198.19.32.141"
+          ]
+        }
+      },
+      {
+        "kind": "Ingress",
+        "namespace": "default",
+        "name": "shop",
+        "uid": "0f1e2d3c-4b5a-4697-8a8b-9c0d1e2f3a4b",
+        "created": "2026-10-23T21:02:00Z",
+        "resource_version": "1302",
+        "ingress": {
+          "namespace": "default",
+          "name": "shop",
+          "hosts": [
+            "shop.k8s.fev.local"
+          ],
+          "address": "198.19.8.2",
+          "urls": [
+            "https://shop.k8s.fev.local"
+          ]
+        }
+      }
+    ]
+  }
+}

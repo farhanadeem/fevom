@@ -1,0 +1,12 @@
+{
+  "method": "memory.reclaim",
+  "params": {},
+  "result": {
+    "file_before_bytes": 2415919104,
+    "file_after_bytes": 134217728,
+    "reclaimed_bytes": 2281701376,
+    "floor_mib": 128,
+    "compacted": true,
+    "duration_ms": 412.5
+  }
+}

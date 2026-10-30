@@ -1,0 +1,40 @@
+{
+  "method": "domains.set",
+  "params": {
+    "seq": 7,
+    "https": true,
+    "index": "198.19.4.1",
+    "ca": "-----BEGIN CERTIFICATE-----\nMIIBizCCATGgAwIBAgIQZmV2b20tZml4dHVyZS1yb290MAoGCCqGSM49BAMCMBAx\n-----END CERTIFICATE-----\n",
+    "targets": [
+      {
+        "kind": "container",
+        "id": "3f2a9c41d7e0b6a58c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b",
+        "name": "web",
+        "address": "198.19.4.2",
+        "names": ["*.web.fev.local", "web.fev.local"],
+        "target": "198.19.2.2",
+        "netns": "/var/run/docker/netns/4c1d2e3f4a5b",
+        "exposed": ["80/tcp"]
+      },
+      {
+        "kind": "container",
+        "id": "9b8a7c6d5e4f30211203f4e5d6c7b8a99a8b7c6d5e4f30211203f4e5d6c7b8a9",
+        "name": "api.shop",
+        "address": "198.19.4.3",
+        "names": ["*.api.shop.fev.local", "*.shop-custom.local", "api.shop.fev.local", "shop-api-1.fev.local", "shop-custom.local"],
+        "target": "198.19.64.3",
+        "netns": "/var/run/docker/netns/77a1b2c3d4e5",
+        "http_port": 8080,
+        "exposed": ["8080/tcp", "9229/tcp"]
+      },
+      {
+        "kind": "machine",
+        "id": "dev",
+        "name": "dev",
+        "address": "198.19.0.11",
+        "names": ["*.dev.fev.local", "dev.fev.local"]
+      }
+    ]
+  },
+  "result": {"seq": 7, "targets": 3}
+}

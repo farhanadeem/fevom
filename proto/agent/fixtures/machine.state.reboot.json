@@ -1,0 +1,19 @@
+{
+  "method": "machine.state",
+  "notification": true,
+  "params": {
+    "name": "dev",
+    "state": "stopping",
+    "image": {
+      "distro": "ubuntu",
+      "release": "questing",
+      "arch": "arm64",
+      "variant": "cloud",
+      "serial": "20261014_07:42"
+    },
+    "uuid": "8f14e45f-ceea-467a-9575-0c7a3c5d2b11",
+    "init": "systemd",
+    "disk_bytes": 1288490188,
+    "last_exit": "reboot"
+  }
+}

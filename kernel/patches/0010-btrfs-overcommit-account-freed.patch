@@ -1,0 +1,108 @@
+diff --git a/fs/btrfs/fs.h b/fs/btrfs/fs.h
+--- a/fs/btrfs/fs.h
++++ b/fs/btrfs/fs.h
+@@ -529,6 +529,8 @@
+ 
+ 	/* Keep track of unallocated space */
+ 	atomic64_t free_chunk_space;
++
++	atomic64_t freed_chunk_space;
+ 
+ 	/* Track ranges which are used by log trees blocks/logged data extents */
+ 	struct extent_io_tree excluded_extents;
+diff --git a/fs/btrfs/space-info.c b/fs/btrfs/space-info.c
+--- a/fs/btrfs/space-info.c
++++ b/fs/btrfs/space-info.c
+@@ -2,6 +2,7 @@
+ 
+ #include <linux/spinlock.h>
+ #include <linux/minmax.h>
++#include <linux/moduleparam.h>
+ #include "misc.h"
+ #include "ctree.h"
+ #include "space-info.h"
+@@ -447,8 +448,43 @@
+ 	data_chunk_size = min(data_sinfo->chunk_size,
+ 			      mult_perc(fs_info->fs_devices->total_rw_bytes, 10));
+ 	return min_t(u64, data_chunk_size, SZ_1G);
++}
++
++static unsigned int btrfs_metadata_overcommit_shift = 3;
++
++static int metadata_overcommit_shift_set(const char *val, const struct kernel_param *kp)
++{
++	return param_set_uint_minmax(val, kp, 3, 6);
+ }
++
++static const struct kernel_param_ops metadata_overcommit_shift_ops = {
++	.set = &metadata_overcommit_shift_set,
++	.get = &param_get_uint,
++};
+ 
++module_param_cb(metadata_overcommit_shift, &metadata_overcommit_shift_ops,
++		&btrfs_metadata_overcommit_shift, 0644);
++MODULE_PARM_DESC(metadata_overcommit_shift,
++		 "Right shift of unallocated space a flushing metadata reservation may overcommit (3=1/8 .. 6=1/64)");
++
++static bool btrfs_metadata_account_freed = true;
++module_param_named(metadata_account_freed, btrfs_metadata_account_freed, bool, 0644);
++MODULE_PARM_DESC(metadata_account_freed,
++		 "Exclude device space freed but not yet committed from metadata overcommit");
++
++static u64 btrfs_account_freed_device_space(struct btrfs_fs_info *fs_info, u64 profile)
++{
++	u64 raw;
++	int factor;
++
++	if (!READ_ONCE(btrfs_metadata_account_freed))
++		return 0;
++
++	raw = atomic64_read(&fs_info->freed_chunk_space);
++	factor = btrfs_bg_type_to_factor(profile);
++	return factor ? div_u64(raw, factor) : raw;
++}
++
+ static u64 calc_available_free_space(const struct btrfs_space_info *space_info,
+ 				     enum btrfs_reserve_flush_enum flush)
+ {
+@@ -479,6 +515,8 @@
+ 		if (avail == 0)
+ 			return 0;
+ 	}
++	avail -= min(avail, btrfs_account_freed_device_space(fs_info, profile));
++
+ 	data_chunk_size = calc_effective_data_chunk_size(fs_info);
+ 
+ 	/*
+@@ -501,10 +539,9 @@
+ 	/*
+ 	 * If we aren't flushing all things, let us overcommit up to
+ 	 * 1/2th of the space. If we can flush, don't let us overcommit
+-	 * too much, let it overcommit up to 1/64th of the space.
+ 	 */
+ 	if (flush == BTRFS_RESERVE_FLUSH_ALL || flush == BTRFS_RESERVE_FLUSH_ALL_STEAL)
+-		avail >>= 6;
++		avail >>= READ_ONCE(btrfs_metadata_overcommit_shift);
+ 	else
+ 		avail >>= 1;
+ 
+diff --git a/fs/btrfs/volumes.c b/fs/btrfs/volumes.c
+--- a/fs/btrfs/volumes.c
++++ b/fs/btrfs/volumes.c
+@@ -3439,6 +3439,7 @@
+ 			btrfs_device_set_bytes_used(device,
+ 					device->bytes_used - dev_extent_len);
+ 			atomic64_add(dev_extent_len, &fs_info->free_chunk_space);
++			atomic64_add(dev_extent_len, &fs_info->freed_chunk_space);
+ 			btrfs_clear_space_info_full(fs_info);
+ 
+ 			if (list_empty(&device->post_commit_list)) {
+@@ -8511,6 +8512,8 @@
+ 
+ 	ASSERT(trans->state == TRANS_STATE_COMMIT_DOING, "state=%d" , trans->state);
+ 
++	atomic64_set(&trans->fs_info->freed_chunk_space, 0);
++
+ 	if (list_empty(&trans->dev_update_list))
+ 		return;
+ 

@@ -1,0 +1,24 @@
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/Syscalls/Thread.cpp
+@@ -257,6 +257,8 @@
+ static int CloneFork(uint32_t flags, uint64_t exit_signal) {
+   return ::syscall(SYSCALL_DEF(clone), (flags & (CLONE_FS | CLONE_FILES)) | exit_signal, nullptr, nullptr, nullptr, nullptr);
+ }
++
++static int VForkChildFD = -1;
+ 
+ uint64_t ForkGuest(FEXCore::Core::InternalThreadState* Thread, FEXCore::Core::CpuStateFrame* Frame, FEX::HLE::clone3_args* args) {
+   const uint64_t flags = args->args.flags;
+@@ -308,6 +310,11 @@
+   const bool IsChild = Result == 0;
+ 
+   if (IsChild) {
++    if (VForkChildFD != -1) {
++      close(VForkChildFD);
++    }
++    VForkChildFD = IsVFork ? VForkFDs[1] : -1;
++
+     auto ThreadObject = static_cast<FEX::HLE::ThreadStateObject*>(Thread->FrontendPtr);
+     // Unlock the mutexes on both sides of the fork
+     FEX::HLE::_SyscallHandler->UnlockAfterFork(Frame->Thread, IsChild);

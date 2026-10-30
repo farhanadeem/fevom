@@ -1,0 +1,18 @@
+[
+  {
+    "path": "/etc/hostname",
+    "when": [
+      "create",
+      "copy"
+    ],
+    "template": "{{ container.name }}\n"
+  },
+  {
+    "path": "/etc/hosts",
+    "when": [
+      "create",
+      "copy"
+    ],
+    "template": "127.0.1.1\t{{ container.name }}\n127.0.0.1\tlocalhost\n::1\t\tlocalhost ip6-localhost ip6-loopback\nff02::1\t\tip6-allnodes\nff02::2\t\tip6-allrouters\n\n"
+  }
+]

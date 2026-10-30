@@ -1,0 +1,11 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "id": 4,
+    "method": "machine.create",
+    "state": "failed",
+    "phase": "online",
+    "error": "apk add sudo: no answer from dl-cdn.alpinelinux.org within the create's deadline"
+  }
+}

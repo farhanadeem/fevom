@@ -1,0 +1,18 @@
+{
+  "method": "config.reset",
+  "params": {
+    "keys": [
+      "memory_mib"
+    ]
+  },
+  "result": {
+    "changed": [
+      {
+        "key": "memory_mib",
+        "value": 8192,
+        "apply": "vm_restart",
+        "pending": true
+      }
+    ]
+  }
+}

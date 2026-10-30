@@ -1,0 +1,7 @@
+{
+  "method": "engine.unsubscribe",
+  "params": {
+    "subscription": 4
+  },
+  "result": {}
+}

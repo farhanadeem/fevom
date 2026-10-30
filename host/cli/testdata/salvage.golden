@@ -1,0 +1,8 @@
+to: /tmp/fev-salvage-test
+read by: a read-only mount
+files: 18234
+size: 2.0 GiB
+not read: 3
+  /data/@docker/volumes/pg/_data/base/1: input/output error, 8192 bytes not read
+  (and 2 more)
+Files were read from an older commit or with the filesystem's checks turned off: a file rewritten in place since that commit has the commit's size with newer bytes inside it, so check each database with its own tool (pg_amcheck, sqlite3's integrity_check, mysqlcheck) before relying on it.

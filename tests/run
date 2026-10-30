@@ -1,0 +1,41 @@
+#!/bin/sh
+# fev's tests.
+#
+#   tests/run unit [layer]   per-layer unit tests (layers: vmm, proto, guest, host, app)
+#   tests/run smoke [APP]    a built app end to end: a scratch fev starts, runs a
+#                            container and stops (tests/smoke.sh)
+set -eu
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+cargo=${CARGO:-$HOME/.cargo/bin/cargo}
+go=${GO:-go}
+
+usage() {
+	sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'
+	exit 2
+}
+
+. "$root/tests/lib/unit.sh"
+
+tier=${1:-}
+[ $# -gt 0 ] && shift
+case "$tier" in
+unit)
+	case "${1:-all}" in
+	all)
+		unit_vmm
+		unit_proto
+		unit_guest
+		unit_host
+		unit_app
+		;;
+	vmm | proto | guest | host | app) "unit_$1" ;;
+	*)
+		echo "unit: no layer '$1' (have: vmm, proto, guest, host, app)" >&2
+		exit 2
+		;;
+	esac
+	;;
+smoke) exec "$root/tests/smoke.sh" "$@" ;;
+*) usage ;;
+esac

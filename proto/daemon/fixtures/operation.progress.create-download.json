@@ -1,0 +1,17 @@
+{
+  "method": "operation.progress",
+  "notification": true,
+  "params": {
+    "subscription": 2,
+    "operation": {
+      "id": "op-20261014T091155-1",
+      "method": "machines.create",
+      "target": "dev",
+      "state": "running",
+      "phase": "download",
+      "done_bytes": 196083712,
+      "total_bytes": 304087040,
+      "started": "2026-10-14T09:11:55Z"
+    }
+  }
+}

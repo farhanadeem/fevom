@@ -1,0 +1,15 @@
+{
+  "method": "memory.reclaim",
+  "params": {
+    "floor_mib": 512,
+    "no_compact": true
+  },
+  "result": {
+    "file_before_bytes": 156237824,
+    "file_after_bytes": 156237824,
+    "reclaimed_bytes": 0,
+    "floor_mib": 512,
+    "skipped": "floor",
+    "duration_ms": 0.2
+  }
+}

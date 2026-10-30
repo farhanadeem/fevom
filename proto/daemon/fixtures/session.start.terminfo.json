@@ -1,0 +1,23 @@
+{
+  "method": "session.start",
+  "params": {
+    "argv": [
+      "htop"
+    ],
+    "env": [
+      "TERM=xterm-fevtest"
+    ],
+    "dir": "/Users/ada/src/app",
+    "tty": true,
+    "rows": 50,
+    "cols": 160,
+    "shell": true,
+    "terminfo": "GgEgAAIAAwAGAAoAeHRlcm0tZmV2dGVzdHxmZXYgdGVzdCB0ZXJtaW5hbAAAAVAA//8YAP//AAD///////8CAAcAG1tIG1sySgA="
+  },
+  "result": {
+    "id": 10,
+    "token": "4f3e2d1c0b9a48f7e6d5c4b3a2918070",
+    "machine": "dev",
+    "user": "ada"
+  }
+}

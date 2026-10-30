@@ -1,0 +1,28 @@
+diff --git a/FEXCore/Source/Interface/Config/Config.cpp b/FEXCore/Source/Interface/Config/Config.cpp
+--- a/FEXCore/Source/Interface/Config/Config.cpp
++++ b/FEXCore/Source/Interface/Config/Config.cpp
+@@ -109,23 +109,7 @@
+ }
+ 
+ fextl::string GetApplicationConfig(const std::string_view Program, bool Global) {
+-  fextl::string ConfigFile = GetConfigDirectory(Global);
+-
+-  if (!Global && !FHU::Filesystem::Exists(ConfigFile) && !FHU::Filesystem::CreateDirectories(ConfigFile)) {
+-    LogMan::Msg::DFmt("Couldn't create config directory: '{}'", ConfigFile);
+-    // Let's go local in this case
+-    return fextl::fmt::format("./{}.json", Program);
+-  }
+-
+-  ConfigFile += "AppConfig/";
+-
+-  // Attempt to create the local folder if it doesn't exist
+-  if (!Global && !FHU::Filesystem::Exists(ConfigFile) && !FHU::Filesystem::CreateDirectories(ConfigFile)) {
+-    // Let's go local in this case
+-    return fextl::fmt::format("./{}.json", Program);
+-  }
+-
+-  return fextl::fmt::format("{}{}.json", ConfigFile, Program);
++  return fextl::fmt::format("{}AppConfig/{}.json", GetConfigDirectory(Global), Program);
+ }
+ 
+ static fextl::map<FEXCore::Config::LayerType, fextl::unique_ptr<FEXCore::Config::Layer>> ConfigLayers;

@@ -1,0 +1,11 @@
+fev 10:00:10  VM running  on the Mac: 900.0 MiB (of 8.0 GiB guest RAM; 2.0 GiB given back)
+Linux: 2.0 GiB used of 8.0 GiB, 300.0 MiB file cache
+
+KIND       NAME          CPU%  MEMORY     DISK READ/s  DISK WRITE/s  NET IN/s  NET OUT/s  PIDS
+system     Linux (all)   -     1.2 GiB    -            -             -         -          90
+service    engine        -     150.0 MiB  -            -                                  38
+machine    dev           -     200.0 MiB  -            -             -         -          12
+compose    shop          -     340.0 MiB  -            -             -         -          25
+container    shop-db-1   -     300.0 MiB  -            -             -         -          20
+container    shop-web-1  -     40.0 MiB   -            -             -         -          5
+container  scratch       -     2.0 MiB    -            -             -         -          1

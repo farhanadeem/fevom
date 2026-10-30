@@ -1,0 +1,14 @@
+{
+  "method": "k8s.reset",
+  "params": {
+    "all": true
+  },
+  "result": {
+    "id": "op-20261023T210000-1",
+    "method": "k8s.reset",
+    "target": "kubernetes",
+    "state": "running",
+    "phase": "stopping",
+    "started": "2026-10-23T21:00:00Z"
+  }
+}

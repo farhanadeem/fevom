@@ -1,0 +1,2 @@
+events records=1
+  change flags=0 mask=modify|close_write|open parent=12 child=57 parent2=0 victim=0 name="main.go" name2=""

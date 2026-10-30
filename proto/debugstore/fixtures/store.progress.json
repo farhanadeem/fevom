@@ -1,0 +1,11 @@
+{
+  "method": "store.progress",
+  "notification": true,
+  "params": {
+    "phase": "fetch",
+    "done_bytes": 24117248,
+    "total_bytes": 52428800,
+    "paths_done": 6,
+    "paths_total": 14
+  }
+}

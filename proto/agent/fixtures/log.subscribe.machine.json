@@ -1,0 +1,13 @@
+{
+  "method": "log.subscribe",
+  "params": {
+    "sources": [
+      "machine:dev:runtime",
+      "machine:dev"
+    ],
+    "backlog": true
+  },
+  "result": {
+    "subscription": 4
+  }
+}

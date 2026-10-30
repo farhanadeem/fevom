@@ -1,0 +1,9 @@
+{
+  "method": "session.exit",
+  "notification": true,
+  "params": {
+    "id": 9,
+    "exit_code": 0,
+    "stream_ended": true
+  }
+}

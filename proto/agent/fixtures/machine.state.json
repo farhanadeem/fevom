@@ -1,0 +1,20 @@
+{
+  "method": "machine.state",
+  "notification": true,
+  "params": {
+    "name": "f43",
+    "state": "starting",
+    "image": {
+      "distro": "fedora",
+      "release": "43",
+      "arch": "arm64",
+      "variant": "default",
+      "serial": "20261014_20:33"
+    },
+    "uuid": "c9f0f895-fb98-4b91-9f3e-2a1d6c7e8b20",
+    "init": "systemd",
+    "pid": 3120,
+    "started_ms": 90551.2,
+    "disk_bytes": 402653184
+  }
+}

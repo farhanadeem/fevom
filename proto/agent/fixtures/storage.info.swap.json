@@ -1,0 +1,64 @@
+{
+  "method": "storage.info",
+  "params": {},
+  "result": {
+    "device": "/dev/vda",
+    "fstype": "btrfs",
+    "fsid": "0b1e5f6c-6a8e-4a55-9d0b-3c1d2e4f5a6b",
+    "layout": 2,
+    "size_bytes": 1099511627776,
+    "used_bytes": 6442450944,
+    "mount_rung": 2,
+    "read_only": false,
+    "steps": [
+      {
+        "rung": 1,
+        "name": "mount",
+        "error": "mount -o discard=async,nodatasum,nodatacow: invalid argument (the kernel log has the reason)"
+      },
+      {
+        "rung": 2,
+        "name": "btrfs rescue super-recover"
+      }
+    ],
+    "errors": {
+      "write": 0,
+      "read": 0,
+      "flush": 0,
+      "corruption": 1,
+      "generation": 0
+    },
+    "quota": {
+      "limited": true,
+      "limit_bytes": 13958643712,
+      "referenced_bytes": 6442450944,
+      "reserved_bytes": 0
+    },
+    "swap": [
+      {
+        "kind": "zram",
+        "device": "/dev/zram0",
+        "priority": 32767,
+        "size_bytes": 4294967296,
+        "used_bytes": 536870912,
+        "algorithm": "lz4",
+        "stored_bytes": 178956970
+      },
+      {
+        "kind": "disk",
+        "device": "/dev/vdc",
+        "priority": 1,
+        "size_bytes": 1073741824,
+        "used_bytes": 0
+      }
+    ],
+    "check": {
+      "state": "running",
+      "auto": true,
+      "started_ms": 4120.5,
+      "scrubbed_bytes": 805306368,
+      "corrected": 0,
+      "uncorrectable": 0
+    }
+  }
+}

@@ -1,0 +1,186 @@
+diff --git a/fs/binfmt_misc.c b/fs/binfmt_misc.c
+--- a/fs/binfmt_misc.c
++++ b/fs/binfmt_misc.c
+@@ -47,6 +47,9 @@
+ #define MISC_FMT_CREDENTIALS (1UL << 29)
+ #define MISC_FMT_OPEN_FILE (1UL << 28)
+ #define MISC_FMT_JIT_RUNTIME (1UL << 27)
++#define MISC_FMT_GROUP1 (1UL << 26)
++#define MISC_FMT_GROUP2 (1UL << 25)
++#define MISC_FMT_GROUPS (MISC_FMT_GROUP1 | MISC_FMT_GROUP2)
+ 
+ typedef struct {
+ 	struct list_head list;
+@@ -105,6 +108,13 @@
+ 		if (!test_bit(Enabled, &e->flags))
+ 			continue;
+ 
++		if (e->flags & MISC_FMT_GROUPS) {
++			unsigned int group = READ_ONCE(current->signal->binfmt_group);
++
++			if (group && ((group == 1) != !!(e->flags & MISC_FMT_GROUP1)))
++				continue;
++		}
++
+ 		/* Do matching based on extension if applicable. */
+ 		if (!test_bit(Magic, &e->flags)) {
+ 			if (p && !strcmp(e->magic, p + 1))
+@@ -345,6 +355,14 @@
+ 			   open-binary flag */
+ 			e->flags |= (MISC_FMT_CREDENTIALS |
+ 					MISC_FMT_OPEN_BINARY);
++			break;
++		case '1':
++		case '2':
++			if (e->flags & MISC_FMT_GROUPS) {
++				cont = 0;
++				break;
++			}
++			e->flags |= *p++ == '1' ? MISC_FMT_GROUP1 : MISC_FMT_GROUP2;
+ 			break;
+ 		case 'J':
+ 			p++;
+@@ -627,6 +645,10 @@
+ 		*dp++ = 'F';
+ 	if (e->flags & MISC_FMT_JIT_RUNTIME)
+ 		*dp++ = 'J';
++	if (e->flags & MISC_FMT_GROUP1)
++		*dp++ = '1';
++	if (e->flags & MISC_FMT_GROUP2)
++		*dp++ = '2';
+ 	*dp++ = '\n';
+ 
+ 	if (!test_bit(Magic, &e->flags)) {
+diff --git a/include/linux/sched/signal.h b/include/linux/sched/signal.h
+--- a/include/linux/sched/signal.h
++++ b/include/linux/sched/signal.h
+@@ -96,6 +96,7 @@
+ 	atomic_t		live;
+ 	int			nr_threads;
+ 	int			quick_threads;
++	unsigned int		binfmt_group;
+ 	struct list_head	thread_head;
+ 
+ 	wait_queue_head_t	wait_chldexit;	/* for wait4() */
+diff --git a/kernel/fork.c b/kernel/fork.c
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -1737,6 +1737,7 @@
+ 	if (!sig)
+ 		return -ENOMEM;
+ 
++	sig->binfmt_group = READ_ONCE(current->signal->binfmt_group);
+ 	sig->nr_threads = 1;
+ 	sig->quick_threads = 1;
+ 	atomic_set(&sig->live, 1);
+diff --git a/kernel/sys.c b/kernel/sys.c
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -2819,6 +2819,16 @@
+ 		error = sched_core_share_pid(arg2, arg3, arg4, arg5);
+ 		break;
+ #endif
++	case PR_SET_BINFMT_GROUP:
++		if (arg2 > BINFMT_GROUP_MAX || arg3 || arg4 || arg5)
++			return -EINVAL;
++		WRITE_ONCE(current->signal->binfmt_group, (unsigned int)arg2);
++		break;
++	case PR_GET_BINFMT_GROUP:
++		if (arg2 || arg3 || arg4 || arg5)
++			return -EINVAL;
++		error = READ_ONCE(current->signal->binfmt_group);
++		break;
+ 	case PR_SET_MDWE:
+ 		error = prctl_set_mdwe(arg2, arg3, arg4, arg5);
+ 		break;
+diff --git a/kernel/sys.c b/kernel/sys.c
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -1,4 +1,5 @@
+ // SPDX-License-Identifier: GPL-2.0
++#include <uapi/linux/fev_binfmt.h>
+ /*
+  *  linux/kernel/sys.c
+  *
+diff --git a/fs/binfmt_misc.c b/fs/binfmt_misc.c
+--- a/fs/binfmt_misc.c
++++ b/fs/binfmt_misc.c
+@@ -15,6 +15,7 @@
+ #include <linux/hex.h>
+ #include <linux/init.h>
+ #include <linux/sched/mm.h>
++#include <linux/cgroup.h>
+ #include <linux/magic.h>
+ #include <linux/binfmts.h>
+ #include <linux/slab.h>
+@@ -98,6 +99,17 @@
+ {
+ 	char *p = strrchr(bprm->interp, '.');
+ 	Node *e;
++	unsigned int group = READ_ONCE(current->signal->binfmt_group);
++
++	if (!group) {
++		struct cgroup *cgrp;
++
++		rcu_read_lock();
++		for (cgrp = task_dfl_cgroup(current); cgrp && !group;
++		     cgrp = cgroup_parent(cgrp))
++			group = READ_ONCE(cgrp->binfmt_group);
++		rcu_read_unlock();
++	}
+ 
+ 	/* Walk all the registered handlers. */
+ 	list_for_each_entry(e, &misc->entries, list) {
+@@ -109,8 +121,6 @@
+ 			continue;
+ 
+ 		if (e->flags & MISC_FMT_GROUPS) {
+-			unsigned int group = READ_ONCE(current->signal->binfmt_group);
+-
+ 			if (group && ((group == 1) != !!(e->flags & MISC_FMT_GROUP1)))
+ 				continue;
+ 		}
+diff --git a/include/linux/cgroup-defs.h b/include/linux/cgroup-defs.h
+--- a/include/linux/cgroup-defs.h
++++ b/include/linux/cgroup-defs.h
+@@ -496,6 +496,8 @@
+ 	 * descendant of another without traversing the hierarchy.
+ 	 */
+ 	int level;
++
++	unsigned int binfmt_group;
+ 
+ 	/* Maximum allowed descent tree depth */
+ 	int max_depth;
+diff --git a/kernel/cgroup/cgroup.c b/kernel/cgroup/cgroup.c
+--- a/kernel/cgroup/cgroup.c
++++ b/kernel/cgroup/cgroup.c
+@@ -5463,10 +5463,28 @@
+ 				    char *buf, size_t nbytes, loff_t off)
+ {
+ 	return __cgroup_procs_write(of, buf, false) ?: nbytes;
++}
++
++static u64 cgroup_binfmt_read(struct cgroup_subsys_state *css, struct cftype *cft)
++{
++	return READ_ONCE(css->cgroup->binfmt_group);
++}
++
++static int cgroup_binfmt_write(struct cgroup_subsys_state *css, struct cftype *cft, u64 value)
++{
++	if (value > 2)
++		return -EINVAL;
++	WRITE_ONCE(css->cgroup->binfmt_group, (unsigned int)value);
++	return 0;
+ }
+ 
+ /* cgroup core interface files for the default hierarchy */
+ static struct cftype cgroup_base_files[] = {
++	{
++		.name = "cgroup.binfmt_group",
++		.read_u64 = cgroup_binfmt_read,
++		.write_u64 = cgroup_binfmt_write,
++	},
+ 	{
+ 		.name = "cgroup.type",
+ 		.flags = CFTYPE_NOT_ON_ROOT,

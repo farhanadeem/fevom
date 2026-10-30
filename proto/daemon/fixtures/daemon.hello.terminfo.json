@@ -1,0 +1,17 @@
+{
+  "method": "daemon.hello",
+  "params": {
+    "api_version": 1,
+    "build": "dcd8a24-dirty.0a1b2c3d",
+    "client": "fev",
+    "ssh_auth_sock": "/private/tmp/com.apple.launchd.Qx3mZ8aB1c/Listeners",
+    "terminfo": "/Applications/Ghostty.app/Contents/Resources/terminfo",
+    "terminfo_dirs": "/opt/homebrew/share/terminfo:"
+  },
+  "result": {
+    "api_version": 1,
+    "build": "dcd8a24-dirty.0a1b2c3d",
+    "pid": 4242,
+    "home": "/Users/someone/.fev"
+  }
+}

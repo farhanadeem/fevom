@@ -1,0 +1,5 @@
+events records=4
+  delete flags=last_link mask=0 parent=12 child=57 parent2=0 victim=0 name="main.go" name2=""
+  delete flags=0 mask=0 parent=12 child=58 parent2=0 victim=0 name="hardlink" name2=""
+  delete flags=isdir|last_link mask=0 parent=12 child=60 parent2=0 victim=0 name="sub" name2=""
+  delete flags=last_link mask=0 parent=0 child=61 parent2=0 victim=0 name="orphan" name2=""
