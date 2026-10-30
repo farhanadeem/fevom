@@ -17,15 +17,16 @@ const keepEnded = 64
 const progressEvery = time.Second
 
 type Operations struct {
-	publish func(api.Operation)
+	publish   func(api.Operation)
+	workEnded func()
 
 	mu    sync.Mutex
 	byID  map[string]*Operation
 	ended []string
 }
 
-func NewOperations(publish func(api.Operation)) *Operations {
-	return &Operations{publish: publish, byID: map[string]*Operation{}}
+func NewOperations(publish func(api.Operation), workEnded func()) *Operations {
+	return &Operations{publish: publish, workEnded: workEnded, byID: map[string]*Operation{}}
 }
 
 type Operation struct {
@@ -67,7 +68,12 @@ func (t *Operations) Start(ctx context.Context, method, target, phase string, ru
 	first := op.Get()
 	begin := func() {
 		t.publish(first)
-		go run(op)
+		go func() {
+			run(op)
+			if t.workEnded != nil {
+				t.workEnded()
+			}
+		}()
 	}
 	if !jsonrpc.AfterReply(ctx, begin) {
 		begin()

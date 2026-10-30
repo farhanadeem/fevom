@@ -194,6 +194,49 @@ func TestTheViewsCgroupsColdCacheIsNobodys(t *testing.T) {
 	}
 }
 
+func TestMachinesAndInitsColdCacheAreIdle(t *testing.T) {
+	system := t.TempDir()
+	cgroup(t, system, 1240, 3400, true)
+	machines := filepath.Join(system, "fev.machines")
+	cgroup(t, machines, 100, 800, true)
+	cgroup(t, filepath.Join(machines, "ubuntu"), 60, 40, true)
+	cgroup(t, filepath.Join(machines, "debian"), 10, 40, false)
+	cgroup(t, filepath.Join(system, "fev.init"), 20, 700, true)
+	tree := engineTreeAt(t, filepath.Join(system, "fev.system"))
+	tree.System = system
+	tree.Machines = machines
+	tree.Others = []string{filepath.Join(system, "fev.init")}
+	s, err := tree.Look()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Total != 4620<<20 || s.Live != 900<<20 || s.Idle() != 3720<<20 || len(s.Running) != 2 {
+		t.Errorf("total %d MiB, live %d, idle %d, %d running; want 4620, 900, 3720 and 2 (containers alone)", s.Total>>20, s.Live>>20, s.Idle()>>20, len(s.Running))
+	}
+	log := record(t, system)
+	if err := s.Reclaim(800 << 20); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"fev.system/docker/ccc/memory.reclaim=" + strconv.Itoa(50<<20) + " swappiness=0",
+		"fev.machines/debian/memory.reclaim=" + strconv.Itoa(50<<20) + " swappiness=0",
+		"fev.init/memory.reclaim=" + strconv.Itoa(700<<20) + " swappiness=0",
+	}
+	if strings.Join(*log, "\n") != strings.Join(want, "\n") {
+		t.Errorf("wrote:\n%s\nwant:\n%s", strings.Join(*log, "\n"), strings.Join(want, "\n"))
+	}
+	*log = nil
+	if err := s.Reclaim(4000 << 20); err != nil {
+		t.Fatal(err)
+	}
+	all := strings.Join(*log, "\n")
+	shielded := strings.Index(all, "fev.machines/ubuntu/memory.low=max")
+	asked := strings.Index(all, "fev.machines/memory.reclaim=")
+	if shielded < 0 || asked < shielded {
+		t.Errorf("fev.machines was not asked with its running machine shielded:\n%s", strings.Join(*log, "\n"))
+	}
+}
+
 func TestWithNoEngineTheViewsAndTheRootsCacheIsStillIdle(t *testing.T) {
 	system := t.TempDir()
 	cgroup(t, system, 100, 300, true)

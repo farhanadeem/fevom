@@ -138,6 +138,7 @@ type Tree struct {
 	Containers string
 	System     string
 	Others     []string
+	Machines   string
 }
 
 type place struct {
@@ -184,6 +185,12 @@ func (t Tree) Look() (*Survey, error) {
 			return nil, err
 		}
 	}
+	if t.Machines != "" {
+		if n, err := fileOf(t.Machines); err == nil {
+			s.Total += n
+			s.rest(t.Machines, n, func(dir string) uint64 { return s.unit(dir, false, false) })
+		}
+	}
 	for _, dir := range t.Others {
 		if st, err := statOf(dir); err == nil && st.cold() > 0 {
 			s.Total += st.cold()
@@ -219,47 +226,51 @@ func (t Tree) lookEngine(s *Survey) error {
 		own[filepath.Join(t.Root, name)] = true
 	}
 	containers := filepath.Join(t.Root, t.Containers)
-	unit := func(dir string) uint64 {
-		st, err := statOf(dir)
-		if err != nil {
-			return 0
-		}
-		n := st.cache()
-		switch {
-		case own[dir]:
-			s.own = append(s.own, place{dir: dir, bytes: n})
-		case populated(dir):
-			s.Live += n
-			usec, _ := cpuOf(dir)
-			s.Running = append(s.Running, Running{Dir: dir, InactiveBytes: st.inactive, ActiveBytes: st.active,
-				SlabBytes: st.slab, Refaults: st.refaults, CPUUsec: usec})
-		default:
-			s.stopped = append(s.stopped, place{dir: dir, bytes: n})
-		}
-		return n
-	}
-	parent := func(dir string, counted uint64, each func(string) uint64) {
-		kids := children(dir)
-		var seen uint64
-		for _, kid := range kids {
-			seen += each(kid)
-		}
-		if counted > seen {
-			s.gone = append(s.gone, place{dir: dir, bytes: counted - seen, shield: kids})
-		}
-	}
-	parent(t.Root, total, func(dir string) uint64 {
+	s.rest(t.Root, total, func(dir string) uint64 {
 		if dir != containers || t.Containers == "" {
-			return unit(dir)
+			return s.unit(dir, own[dir], true)
 		}
 		n, err := fileOf(dir)
 		if err != nil {
 			return 0
 		}
-		parent(dir, n, unit)
+		s.rest(dir, n, func(dir string) uint64 { return s.unit(dir, false, true) })
 		return n
 	})
 	return nil
+}
+
+func (s *Survey) unit(dir string, own, container bool) uint64 {
+	st, err := statOf(dir)
+	if err != nil {
+		return 0
+	}
+	n := st.cache()
+	switch {
+	case own:
+		s.own = append(s.own, place{dir: dir, bytes: n})
+	case populated(dir):
+		s.Live += n
+		if container {
+			usec, _ := cpuOf(dir)
+			s.Running = append(s.Running, Running{Dir: dir, InactiveBytes: st.inactive, ActiveBytes: st.active,
+				SlabBytes: st.slab, Refaults: st.refaults, CPUUsec: usec})
+		}
+	default:
+		s.stopped = append(s.stopped, place{dir: dir, bytes: n})
+	}
+	return n
+}
+
+func (s *Survey) rest(dir string, counted uint64, each func(string) uint64) {
+	kids := children(dir)
+	var seen uint64
+	for _, kid := range kids {
+		seen += each(kid)
+	}
+	if counted > seen {
+		s.gone = append(s.gone, place{dir: dir, bytes: counted - seen, shield: kids})
+	}
 }
 
 const margin = 2 << 20

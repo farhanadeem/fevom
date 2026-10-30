@@ -146,7 +146,7 @@ func (m *Machines) Start(h Host) error {
 		return err
 	}
 	m.source = src
-	m.ops = NewOperations(h.PublishOperation)
+	m.ops = NewOperations(h.PublishOperation, h.WorkEnded)
 	m.bridge = newBridgeServer(m, m.log)
 	if err := m.sessions.start(m, h.Layout().Home); err != nil {
 		return err
@@ -675,6 +675,9 @@ func (m *Machines) guestState(st agent.MachineState) {
 	if m.OnState != nil {
 		m.OnState(st)
 	}
+	if e != nil && e.State == api.MachineRunning && (st.Removed || st.State != agent.MachineRunning) {
+		m.workEnded()
+	}
 	switch {
 	case st.Removed:
 		delete(m.gone, st.Name)
@@ -957,7 +960,14 @@ func (m *Machines) stop(ctx context.Context, params json.RawMessage) (any, error
 	m.applyLocked(e, *i, false)
 	m.saveLocked()
 	m.changedLocked(e, false)
+	m.workEnded()
 	return m.view(e), nil
+}
+
+func (m *Machines) workEnded() {
+	if m.host != nil {
+		go m.host.WorkEnded()
+	}
 }
 
 func (m *Machines) restart(ctx context.Context, params json.RawMessage) (any, error) {
@@ -1016,6 +1026,7 @@ func (m *Machines) delete(ctx context.Context, params json.RawMessage) (any, err
 		m.saveLocked()
 	}
 	m.log.Info("machines: deleted", "machine", p.Name)
+	m.workEnded()
 	return api.Empty{}, nil
 }
 

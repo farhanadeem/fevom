@@ -10,7 +10,9 @@ import (
 )
 
 var engineTree = reclaim.Tree{Root: engineCgroup, Own: []string{engineSupervisorLeaf, "engine", "exec", "containerd", "k3s"}, Containers: "docker", System: cgroupRoot,
-	Others: []string{viewCgroup}}
+	Machines: machinesCgroup, Others: []string{viewCgroup, initCgroup}}
+
+const initCgroup = cgroupRoot + "/fev.init"
 
 const engineSupervisorLeaf = "init.scope"
 
@@ -18,7 +20,7 @@ func memoryTree() reclaim.Tree {
 	if reclaim.Exists(engineCgroup) {
 		return engineTree
 	}
-	return reclaim.Tree{System: engineTree.System, Others: engineTree.Others}
+	return reclaim.Tree{System: engineTree.System, Machines: engineTree.Machines, Others: engineTree.Others}
 }
 
 func (s *system) IdleCache() (idle, own, live uint64, err error) {
